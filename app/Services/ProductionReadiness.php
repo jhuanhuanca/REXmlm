@@ -84,9 +84,9 @@ class ProductionReadiness
         $hasStripe = is_string($stripeSecret) && $stripeSecret !== '';
 
         if ($production && ! $offline && ! $hasPaddle && ! $hasStripe) {
-            $issues[] = $this->fail(
+            $issues[] = $this->warn(
                 'billing_keys',
-                'Configura PADDLE_API_KEY (o STRIPE_SECRET) antes de cobrar.',
+                'PADDLE_API_KEY (o STRIPE_SECRET) aún no está configurado. La API sigue en pie; el checkout SaaS permanece cerrado hasta que pongas las claves.',
             );
         }
 

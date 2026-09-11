@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Subscription\Models\Plan;
+use App\Services\ProductionReadiness;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -68,6 +69,32 @@ class GoLiveCheckCommandTest extends TestCase
 
         $this->artisan('rexmlm:go-live-check', ['--as-production' => true])
             ->assertOk();
+    }
+
+    public function test_as_production_allows_missing_paddle_keys(): void
+    {
+        config([
+            'app.debug' => false,
+            'app.key' => 'base64:'.base64_encode(str_repeat('a', 32)),
+            'app.url' => 'https://xeft.rexmlm.tech',
+            'billing.offline' => false,
+            'queue.default' => 'redis',
+            'cache.default' => 'redis',
+            'services.catalog.token' => str_repeat('a', 40),
+            'cors.allowed_origins' => ['https://rexmlm.tech', 'https://adxm.rexmlm.tech'],
+            'sanctum.stateful' => [],
+            'services.paddle.api_key' => '',
+            'services.paddle.webhook_secret' => '',
+            'cashier.secret' => null,
+            'mail.default' => 'smtp',
+            'session.driver' => 'cookie',
+        ]);
+
+        $this->artisan('rexmlm:go-live-check', ['--as-production' => true])
+            ->assertOk();
+
+        $fatal = app(ProductionReadiness::class)->fatal(true);
+        $this->assertSame([], $fatal);
     }
 
     public function test_health_stays_open_when_not_production(): void
