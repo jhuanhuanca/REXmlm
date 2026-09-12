@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             App\Modules\Store\Console\PrepareLoadTestStoreCommand::class,
             App\Modules\Store\Console\SyncCompanyCatalogCommand::class,
             App\Console\GoLiveCheckCommand::class,
+            App\Modules\Subscription\Console\GrantComplimentarySubscriptionCommand::class,
             App\Modules\Organization\Console\RefreshUserCatalogCompaniesCommand::class,
             App\Modules\MLM\Console\ExpireInvitationsCommand::class,
         ])
