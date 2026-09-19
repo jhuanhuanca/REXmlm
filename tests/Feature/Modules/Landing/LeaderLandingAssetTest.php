@@ -108,6 +108,7 @@ class LeaderLandingAssetTest extends TestCase
                 ],
                 'logo' => 'https://ejemplo.com/logo.png',
                 'whatsapp' => '59168785473',
+                'whatsapp_label' => 'Conversa con Raquel',
                 'blocks' => [],
             ],
         ])->assertOk()
@@ -119,7 +120,9 @@ class LeaderLandingAssetTest extends TestCase
             ->assertJsonPath('data.content.palette.principal.0', '#e72fb9')
             ->assertJsonPath('data.content.palette.complementarios.1', '#71b7c1')
             ->assertJsonPath('data.content.reasons.photo', 'https://ejemplo.com/reasons.jpg')
-            ->assertJsonPath('data.content.logo', 'https://ejemplo.com/logo.png');
+            ->assertJsonPath('data.content.logo', 'https://ejemplo.com/logo.png')
+            ->assertJsonPath('data.content.whatsapp_label', 'Conversa con Raquel')
+            ->assertJsonPath('data.owner_name', $ana->name);
 
         $store = $ana->store;
         $this->assertNotNull($store);

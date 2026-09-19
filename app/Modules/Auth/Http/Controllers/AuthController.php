@@ -11,6 +11,7 @@ use App\Modules\Auth\Actions\RegisterUserAction;
 use App\Modules\Auth\Http\Requests\GoogleAuthRequest;
 use App\Modules\Auth\Http\Requests\LoginRequest;
 use App\Modules\Auth\Http\Requests\RegisterRequest;
+use App\Modules\Auth\Http\Requests\UpdatePasswordRequest;
 use App\Modules\Auth\Http\Resources\AuthUserResource;
 use App\Modules\Auth\Jobs\SendWelcomeEmail;
 use App\Modules\Auth\Services\GoogleIdentityService;
@@ -98,6 +99,24 @@ class AuthController extends Controller
         $request->user()->load('companyMemberships');
 
         return new AuthUserResource($request->user());
+    }
+
+    public function updatePassword(UpdatePasswordRequest $request): JsonResponse
+    {
+        $user = $request->user();
+        $needsCurrent = ! filled($user->google_id);
+
+        if ($needsCurrent && ! Hash::check((string) $request->validated('current_password'), $user->getAuthPassword())) {
+            throw ValidationException::withMessages([
+                'current_password' => ['La contraseña actual no es correcta.'],
+            ]);
+        }
+
+        $user->forceFill([
+            'password' => $request->validated('password'),
+        ])->save();
+
+        return response()->json(['message' => 'Contraseña actualizada.']);
     }
 
     private function completeLogin(User $user, LoginAttemptService $attempts, int $status = 200): JsonResponse

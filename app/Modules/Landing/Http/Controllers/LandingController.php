@@ -55,7 +55,22 @@ class LandingController extends Controller
             ]);
         }
 
-        $landing->update($request->validated());
+        $payload = $request->validated();
+        if (isset($payload['content']) && is_array($payload['content'])) {
+            $current = is_array($landing->content) ? $landing->content : [];
+            $incoming = $payload['content'];
+            $payload['content'] = array_merge($current, $incoming);
+            foreach (['hero', 'reasons', 'palette'] as $section) {
+                if (isset($incoming[$section]) && is_array($incoming[$section])) {
+                    $payload['content'][$section] = array_merge(
+                        is_array($current[$section] ?? null) ? $current[$section] : [],
+                        $incoming[$section],
+                    );
+                }
+            }
+        }
+
+        $landing->update($payload);
 
         $whatsapp = $request->input('content.whatsapp');
         if (is_string($whatsapp) && $user->store) {
@@ -64,7 +79,7 @@ class LandingController extends Controller
             $user->store->update(['settings' => $settings]);
         }
 
-        return new LandingPageResource($landing->fresh());
+        return $this->resource($landing);
     }
 
     public function storeAsset(StoreLandingAssetRequest $request): LandingPageResource|JsonResponse
@@ -106,7 +121,7 @@ class LandingController extends Controller
 
         $landing->update(['content' => $content]);
 
-        return new LandingPageResource($landing->fresh());
+        return $this->resource($landing);
     }
 
     public function togglePublish(Request $request): LandingPageResource|JsonResponse
@@ -121,6 +136,16 @@ class LandingController extends Controller
 
         $landing->is_published = ! $landing->is_published;
         $landing->save();
+
+        return $this->resource($landing);
+    }
+
+    private function resource(LandingPage $landing): LandingPageResource
+    {
+        $landing->load([
+            'user:id,name,country,catalog_company_id,catalog_company_name,catalog_rank_name',
+            'user.store:id,user_id,slug,name',
+        ]);
 
         return new LandingPageResource($landing);
     }

@@ -17,6 +17,14 @@ class SwitchActiveCompanyAction
             ]);
         }
 
+        $membership = $user->membershipForCompany($catalogCompanyId);
+
+        if ($membership === null || ! $membership->isUsable()) {
+            throw ValidationException::withMessages([
+                'catalog_company_id' => ['Esa marca extra no está pagada. Reactívala para usarla.'],
+            ]);
+        }
+
         $user->forceFill(['active_catalog_company_id' => $catalogCompanyId])->save();
 
         return $user->fresh([

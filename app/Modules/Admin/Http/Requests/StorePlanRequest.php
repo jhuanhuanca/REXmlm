@@ -21,12 +21,15 @@ class StorePlanRequest extends FormRequest
         return [
             'name' => [$required, 'string', 'max:255'],
             'price' => [$required, 'numeric', 'min:0'],
+            'intro_price' => ['sometimes', 'numeric', 'min:0'],
             'currency' => ['sometimes', 'in:'.Currencies::COMMISSION],
             'interval' => ['sometimes', 'in:month,year'],
             'commission_percentage' => [$required, 'numeric', 'between:0,100'],
             'features' => ['nullable', 'array'],
             'stripe_price_id' => ['nullable', 'string', 'max:255'],
             'paddle_price_id' => ['nullable', 'string', 'max:255'],
+            'paddle_intro_discount_id' => ['nullable', 'string', 'max:255'],
+            'sort_order' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

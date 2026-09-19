@@ -210,17 +210,39 @@ class User extends Authenticatable
         return $this->activeCashierSubscription();
     }
 
+    public function hasPaidPlatformAccess(): bool
+    {
+        if ((bool) config('billing.offline')) {
+            return true;
+        }
+
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
+        $subscription = $this->subscription('default');
+
+        if ($subscription === null) {
+            return false;
+        }
+
+        $statusOk = in_array((string) $subscription->stripe_status, ['active', 'trialing'], true);
+        $notEnded = $subscription->ends_at === null || $subscription->ends_at->isFuture();
+
+        return $statusOk && $notEnded;
+    }
+
     public function hasActivePlatformAccess(): bool
     {
-        if ($this->hasRole(['admin', 'partner'])) {
+        if ($this->hasRole('admin')) {
             return true;
         }
 
-        if ($this->subscribed('default')) {
-            return true;
+        if ($this->hasRole('leader')) {
+            return $this->hasPaidPlatformAccess();
         }
 
-        return (bool) config('billing.offline');
+        return true;
     }
 
     public function isLocked(): bool

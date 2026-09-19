@@ -29,7 +29,7 @@ class PaddleCheckoutService
 
         $customerId = $this->ensureCustomer($user);
 
-        $transaction = $this->paddle->createTransaction([
+        $payload = [
             'items' => [
                 [
                     'price_id' => $priceId,
@@ -41,10 +41,22 @@ class PaddleCheckoutService
             'collection_mode' => 'automatic',
             'custom_data' => $this->customData(array_merge([
                 'kind' => 'platform_plan',
+                'intro' => 'dollar_1',
                 'user_id' => (string) $user->id,
                 'plan_id' => (string) $plan->id,
             ], $custom)),
-        ]);
+        ];
+
+        $discountId = $plan->paddleIntroDiscountId();
+        if ($discountId === null) {
+            throw ValidationException::withMessages([
+                'plan_id' => ['Este plan no tiene el descuento de US$ 1 (dsc_…). En Paddle no uses trial gratis: el primer ciclo se cobra un dólar con ese descuento de un solo uso.'],
+            ]);
+        }
+
+        $payload['discount_id'] = $discountId;
+
+        $transaction = $this->paddle->createTransaction($payload);
 
         return $this->checkoutUrl($transaction, 'plan_id');
     }
@@ -72,6 +84,32 @@ class PaddleCheckoutService
                             'tax_category' => 'standard',
                         ],
                     ],
+                ],
+            ],
+            'customer_id' => $customerId,
+            'currency_code' => strtoupper($currency),
+            'collection_mode' => 'automatic',
+            'custom_data' => $this->customData(array_merge([
+                'kind' => 'one_time',
+                'user_id' => (string) $user->id,
+            ], $custom)),
+        ]);
+
+        return $this->checkoutUrl($transaction, 'catalog_company_id');
+    }
+
+    /**
+     * @param  array<string, scalar|null>  $custom
+     */
+    public function recurringPriceCheckoutUrl(User $user, string $priceId, string $currency, array $custom = []): string
+    {
+        $customerId = $this->ensureCustomer($user);
+
+        $transaction = $this->paddle->createTransaction([
+            'items' => [
+                [
+                    'price_id' => $priceId,
+                    'quantity' => 1,
                 ],
             ],
             'customer_id' => $customerId,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Store\Http\Controllers\InventoryAllocationController;
 use App\Modules\Store\Http\Controllers\NotificationController;
 use App\Modules\Store\Http\Controllers\OrderController;
+use App\Modules\Store\Http\Controllers\PartnerSalesController;
 use App\Modules\Store\Http\Controllers\ProductController;
 use App\Modules\Store\Http\Controllers\StoreCategoryController;
 use App\Modules\Store\Http\Controllers\StoreReportController;
@@ -21,14 +22,18 @@ Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead']);
 
-    Route::get('my-store', [StoreController::class, 'myStore']);
+    Route::get('my-store', [StoreController::class, 'myStore'])->middleware('subscription');
     Route::get('my-store/orders', [OrderController::class, 'index']);
     Route::get('my-store/orders/{id}/voucher', [OrderController::class, 'voucher']);
     Route::get('my-store/reports/inventory', [StoreReportController::class, 'inventory'])
         ->middleware('permission:product.manage');
     Route::get('my-store/reports/sales', [StoreReportController::class, 'sales']);
 
-    Route::middleware(['permission:store.manage', 'subscription'])->group(function () {
+    Route::get('partner-sales', [PartnerSalesController::class, 'show']);
+    Route::get('partner-sales/orders', [PartnerSalesController::class, 'orders']);
+    Route::post('partner-sales/orders', [PartnerSalesController::class, 'store']);
+
+    Route::middleware(['permission:store.manage', 'subscription', 'plan.feature:store'])->group(function () {
         Route::put('my-store', [StoreController::class, 'update']);
         Route::post('my-store/apply-target-margin', [StoreController::class, 'applyTargetMargin']);
         Route::post('my-store/payment-assets', [StoreController::class, 'storePaymentAsset'])->middleware('throttle:uploads');
@@ -48,7 +53,7 @@ Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
         Route::get('products', [ProductController::class, 'index']);
     });
 
-    Route::middleware(['permission:product.manage', 'subscription'])->group(function () {
+    Route::middleware(['permission:product.manage', 'subscription', 'plan.feature:store'])->group(function () {
         Route::post('products', [ProductController::class, 'store']);
         Route::post('products/import', [ProductController::class, 'import'])->middleware('throttle:uploads');
         Route::put('products/{id}', [ProductController::class, 'update']);

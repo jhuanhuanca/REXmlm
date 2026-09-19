@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Organization\Models\UserCompanyMembership;
 use App\Modules\Subscription\Services\PaddleCheckoutService;
 use App\Modules\Subscription\Services\PaddleClient;
+use App\Modules\Subscription\Services\PlanEntitlements;
 use App\Services\Catalog\CatalogClient;
 use App\Services\Catalog\CompanyCatalogSync;
 use Illuminate\Support\Facades\DB;
@@ -33,29 +34,39 @@ class AddSecondaryCompanyAction
         ?int $catalogRankId = null,
         ?string $catalogRankName = null,
         bool $alreadyPaid = false,
+        string $paddleSubscriptionId = '',
     ): array {
         $brand = $this->assertCanAdd($user, $catalogCompanyId);
-        $price = (float) config('rexmlm.secondary_company.price', 9.9);
+        $price = (float) config('rexmlm.secondary_company.price', 15);
         $currency = strtoupper((string) config('rexmlm.secondary_company.currency', 'USD'));
+        $included = PlanEntitlements::extraCompaniesIncluded($user);
+        $used = $this->billableExtraCount($user);
+        $includedSlot = $used < $included;
 
-        if (! $alreadyPaid && $this->mustCharge($price)) {
-            $url = $this->paddleCheckout->oneTimeCheckoutUrl(
-                $user,
-                'Empresa secundaria: '.$brand['name'],
-                $price,
-                $currency,
-                [
-                    'kind' => 'secondary_company',
-                    'catalog_company_id' => (string) $catalogCompanyId,
-                    'catalog_rank_id' => $catalogRankId ? (string) $catalogRankId : null,
-                    'catalog_rank_name' => $catalogRankName,
-                ],
-            );
+        if (! $alreadyPaid && ! $includedSlot && $this->mustCharge($price)) {
+            $custom = [
+                'kind' => 'secondary_company',
+                'catalog_company_id' => (string) $catalogCompanyId,
+                'catalog_rank_id' => $catalogRankId ? (string) $catalogRankId : null,
+                'catalog_rank_name' => $catalogRankName,
+            ];
+            $paddlePriceId = trim((string) config('rexmlm.secondary_company.paddle_price_id', ''));
+            $url = $paddlePriceId !== ''
+                ? $this->paddleCheckout->recurringPriceCheckoutUrl($user, $paddlePriceId, $currency, $custom)
+                : $this->paddleCheckout->oneTimeCheckoutUrl(
+                    $user,
+                    'Empresa extra: '.$brand['name'],
+                    $price,
+                    $currency,
+                    $custom,
+                );
 
             return ['checkout_url' => $url];
         }
 
-        $membership = DB::transaction(function () use ($user, $catalogCompanyId, $catalogRankId, $catalogRankName, $brand, $price, $currency) {
+        $chargedPrice = ($includedSlot || ($alreadyPaid && $used < $included)) ? 0.0 : $price;
+
+        $membership = DB::transaction(function () use ($user, $catalogCompanyId, $catalogRankId, $catalogRankName, $brand, $chargedPrice, $currency, $paddleSubscriptionId) {
             $membership = UserCompanyMembership::query()->create([
                 'user_id' => $user->id,
                 'catalog_company_id' => $catalogCompanyId,
@@ -63,8 +74,10 @@ class AddSecondaryCompanyAction
                 'catalog_rank_id' => $catalogRankId,
                 'catalog_rank_name' => $catalogRankName,
                 'is_primary' => false,
-                'extra_price' => $price,
+                'extra_price' => $chargedPrice,
                 'currency' => $currency,
+                'billing_status' => 'active',
+                'paddle_subscription_id' => $paddleSubscriptionId !== '' ? $paddleSubscriptionId : null,
             ]);
 
             $this->syncOrganization->handle($user, $catalogCompanyId, (string) $brand['name']);
@@ -123,5 +136,16 @@ class AddSecondaryCompanyAction
         return $price > 0
             && $this->paddle->configured()
             && ! (bool) config('billing.offline');
+    }
+
+    private function billableExtraCount(User $user): int
+    {
+        return $user->companyMemberships()
+            ->where('is_primary', false)
+            ->where(function ($query) {
+                $query->whereNull('billing_status')
+                    ->orWhereNotIn('billing_status', ['canceled']);
+            })
+            ->count();
     }
 }

@@ -14,7 +14,7 @@ class PlanController extends Controller
     public function index(): AnonymousResourceCollection
     {
         return PlanResource::collection(
-            Plan::query()->active()->orderBy('price')->get()
+            Plan::query()->active()->orderBy('sort_order')->orderBy('price')->get()
         );
     }
 }

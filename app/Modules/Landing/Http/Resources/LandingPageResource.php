@@ -23,16 +23,8 @@ class LandingPageResource extends JsonResource
             'content' => $this->content,
             'is_published' => $this->is_published,
             'whatsapp' => data_get($this->content, 'whatsapp'),
-            'owner_name' => $this->when(
-                $this->relationLoaded('user') && $this->user,
-                fn () => $this->user->name,
-                $this->title,
-            ),
-            'store_slug' => $this->when(
-                $this->relationLoaded('user') && $this->user?->relationLoaded('store') && $this->user->store,
-                fn () => $this->user->store->slug,
-                $this->slug,
-            ),
+            'owner_name' => $this->user?->name ?: $this->title,
+            'store_slug' => $this->user?->store?->slug ?: $this->slug,
             'company' => $this->when(
                 $this->relationLoaded('user'),
                 fn () => CompanyBranding::forUser($this->user),

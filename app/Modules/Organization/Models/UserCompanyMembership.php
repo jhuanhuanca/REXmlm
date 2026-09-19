@@ -19,6 +19,8 @@ class UserCompanyMembership extends Model
         'is_primary',
         'extra_price',
         'currency',
+        'billing_status',
+        'paddle_subscription_id',
     ];
 
     protected function casts(): array
@@ -29,6 +31,17 @@ class UserCompanyMembership extends Model
             'is_primary' => 'boolean',
             'extra_price' => 'decimal:2',
         ];
+    }
+
+    public function isUsable(): bool
+    {
+        if ($this->is_primary) {
+            return true;
+        }
+
+        $status = (string) ($this->billing_status ?: 'active');
+
+        return in_array($status, ['active', 'trialing'], true);
     }
 
     public function user(): BelongsTo

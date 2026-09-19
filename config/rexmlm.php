@@ -61,8 +61,9 @@ return [
     'admin_url' => env('ADMIN_URL', 'http://localhost:5174'),
 
     'secondary_company' => [
-        'price' => (float) env('REXMLM_SECONDARY_COMPANY_PRICE', 9.9),
+        'price' => (float) env('REXMLM_SECONDARY_COMPANY_PRICE', 15),
         'currency' => env('REXMLM_SECONDARY_COMPANY_CURRENCY', 'USD'),
+        'paddle_price_id' => env('REXMLM_SECONDARY_COMPANY_PADDLE_PRICE_ID'),
     ],
 
     'landing_block_types' => ['text', 'image', 'store_cta'],

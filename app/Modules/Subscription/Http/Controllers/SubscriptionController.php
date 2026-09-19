@@ -8,12 +8,16 @@ use App\Http\Controllers\Controller;
 use App\Modules\Auth\Http\Resources\AuthUserResource;
 use App\Modules\Commission\Actions\AccrueReferralSubscriptionCommission;
 use App\Modules\MLM\Actions\PromotePartnerToLeaderAction;
+use App\Modules\Subscription\Actions\GrantComplimentarySubscriptionAction;
 use App\Modules\Subscription\Actions\HandlePaddleWebhookAction;
+use App\Modules\Subscription\Actions\ManageLeaderBillingAction;
 use App\Modules\Subscription\Http\Requests\StoreSubscriptionRequest;
 use App\Modules\Subscription\Models\Plan;
+use App\Modules\Subscription\Models\Subscription;
 use App\Modules\Subscription\Services\PaddleCheckoutService;
 use App\Modules\Subscription\Services\PaddleClient;
 use App\Modules\Subscription\Services\PaddleSignatureVerifier;
+use App\Modules\Subscription\Services\PlanEntitlements;
 use App\Shared\Enums\NetworkStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,10 +28,47 @@ class SubscriptionController extends Controller
 {
     public function current(Request $request): JsonResponse
     {
-        $subscription = $request->user()->subscription('default');
+        $user = $request->user();
+        $subscription = $user->subscription('default');
+        $plan = $subscription?->plan;
 
         return response()->json([
             'subscription' => $subscription,
+            'billing' => [
+                'has_paid_access' => $user->hasPaidPlatformAccess(),
+                'status' => $subscription?->stripe_status,
+                'next_billed_at' => $subscription?->next_billed_at,
+                'ends_at' => $subscription?->ends_at,
+                'complimentary' => PlanEntitlements::isComplimentary($user),
+                'plan' => $plan ? [
+                    'id' => $plan->id,
+                    'name' => $plan->name,
+                    'slug' => $plan->slug,
+                    'price' => (float) $plan->price,
+                    'intro_price' => $plan->introPrice(),
+                    'interval' => $plan->interval,
+                    'currency' => $plan->currency,
+                ] : null,
+                'entitlements' => PlanEntitlements::forUser($user),
+            ],
+        ]);
+    }
+
+    public function invoices(Request $request, ManageLeaderBillingAction $billing): JsonResponse
+    {
+        return response()->json([
+            'data' => $billing->invoices($request->user()),
+        ]);
+    }
+
+    public function cancel(Request $request, ManageLeaderBillingAction $billing): JsonResponse
+    {
+        $subscription = $billing->cancelAtPeriodEnd($request->user());
+
+        return response()->json([
+            'message' => 'La suscripción se cancelará al final del periodo ya pagado. Hasta entonces el panel sigue activo.',
+            'subscription' => $subscription,
+            'ends_at' => $subscription->ends_at,
         ]);
     }
 
@@ -37,13 +78,29 @@ class SubscriptionController extends Controller
         AccrueReferralSubscriptionCommission $accrueCommission,
         PaddleClient $paddle,
         PaddleCheckoutService $checkout,
+        ManageLeaderBillingAction $billing,
     ): JsonResponse {
         $plan = Plan::query()->active()->findOrFail($request->integer('plan_id'));
         $user = $request->user();
-        $wasPartner = $user->hasRole(config('rexmlm.roles.partner'));
+        $wasPartner = $user->hasRole(config('rexmlm.roles.partner'))
+            && ! $user->hasRole(config('rexmlm.roles.leader'));
         $offline = (bool) config('billing.offline');
+        $existing = $user->subscription('default');
+        $paddleSub = $existing && str_starts_with((string) $existing->stripe_id, 'sub_');
 
         if ($paddle->configured() && ! $offline) {
+            if ($paddleSub) {
+                $subscription = $billing->changePlan($user, $plan);
+                $user->load(['roles', 'store', 'landingPage', 'currentNetwork', 'sponsor.store', 'sponsor.landingPage', 'organization', 'companyMemberships']);
+
+                return response()->json([
+                    'upgraded' => true,
+                    'offline' => false,
+                    'user' => new AuthUserResource($user),
+                    'subscription' => $subscription,
+                ]);
+            }
+
             $url = $checkout->hostedCheckoutUrl($user, $plan);
 
             return response()->json([
@@ -72,13 +129,29 @@ class SubscriptionController extends Controller
             $accrueCommission->handle($user, $plan);
         }
 
+        if ($existing && ! str_starts_with((string) $existing->stripe_id, GrantComplimentarySubscriptionAction::ID_PREFIX)) {
+            $billing->changePlan($user, $plan);
+        } elseif ($existing === null) {
+            Subscription::query()->create([
+                'user_id' => $user->id,
+                'type' => 'default',
+                'stripe_id' => 'local_'.$user->id,
+                'stripe_status' => 'active',
+                'stripe_price' => $plan->paddlePriceId() ?: 'local',
+                'quantity' => 1,
+                'plan_id' => $plan->id,
+                'network_id' => $user->current_network_id ?: $user->ownedNetwork?->id,
+                'next_billed_at' => now()->addMonth(),
+            ]);
+        }
+
         $user->load(['roles', 'store', 'landingPage', 'currentNetwork', 'sponsor.store', 'sponsor.landingPage', 'organization', 'companyMemberships']);
 
         return response()->json([
             'promoted' => $wasPartner,
             'offline' => true,
             'user' => new AuthUserResource($user),
-            'subscription' => null,
+            'subscription' => $user->subscription('default'),
         ], 201);
     }
 

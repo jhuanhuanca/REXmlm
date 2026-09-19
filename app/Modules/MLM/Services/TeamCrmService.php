@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\MLM\Models\Referral;
 use App\Modules\MLM\Models\TeamActivity;
 use App\Modules\Store\Models\Order;
+use App\Modules\Store\Services\StoreSellerGrantService;
 use App\Shared\Auth\Owned;
 use App\Shared\Enums\OrderStatus;
 use App\Shared\Enums\ReferralStatus;
@@ -17,6 +18,10 @@ use Illuminate\Support\Collection;
 
 class TeamCrmService
 {
+    public function __construct(
+        private readonly StoreSellerGrantService $sellers,
+    ) {}
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -102,7 +107,11 @@ class TeamCrmService
                 ->pluck('aggregate', 'partner_user_id');
         }
 
-        return $referrals->map(function (Referral $referral) use ($downlines, $salesMonth, $salesTotal, $ordersCount, $roles) {
+        $sellerIds = ($storeId && $referredIds !== [])
+            ? $this->sellers->partnerIdsForStore($leader->store)
+            : [];
+
+        return $referrals->map(function (Referral $referral) use ($downlines, $salesMonth, $salesTotal, $ordersCount, $roles, $sellerIds) {
             $id = (int) $referral->referred_id;
             $memberRoles = $roles[$id] ?? [];
             $isLeader = in_array('leader', $memberRoles, true)
@@ -116,6 +125,7 @@ class TeamCrmService
                 (float) ($salesTotal[$id] ?? 0),
                 (int) ($ordersCount[$id] ?? 0),
                 $memberRoles,
+                in_array($id, $sellerIds, true),
             );
         })->values()->all();
     }
@@ -188,11 +198,12 @@ class TeamCrmService
     }
 
     /**
-     * @param  array{crm_stage?: string, notes?: string|null, follow_up_at?: string|null}  $data
+     * @param  array{crm_stage?: string, notes?: string|null, follow_up_at?: string|null, can_sell_inventory?: bool}  $data
      * @return array<string, mixed>
      */
     public function update(User $leader, int $referralId, array $data): array
     {
+        $leader->loadMissing('store');
         $referral = $this->ownedReferral($leader, $referralId);
         $stage = isset($data['crm_stage'])
             ? TeamCrmStage::from($data['crm_stage'])
@@ -206,6 +217,14 @@ class TeamCrmService
                 : $referral->follow_up_at,
             'last_contacted_at' => now(),
         ])->save();
+
+        if (array_key_exists('can_sell_inventory', $data) && $referral->referred_id && $leader->store) {
+            if ($data['can_sell_inventory']) {
+                $this->sellers->grant($leader->store, (int) $referral->referred_id, $leader);
+            } else {
+                $this->sellers->revoke($leader->store, (int) $referral->referred_id);
+            }
+        }
 
         return $this->show($leader, $referral->id);
     }
@@ -284,6 +303,7 @@ class TeamCrmService
         float $salesTotal,
         int $ordersCount,
         array $roles,
+        bool $canSellInventory = false,
     ): array {
         return [
             'id' => $referral->id,
@@ -304,6 +324,7 @@ class TeamCrmService
             'sales_total' => round($salesTotal, 2),
             'orders_count' => $ordersCount,
             'roles' => $roles,
+            'can_sell_inventory' => $canSellInventory,
             'referred' => $referral->referred,
         ];
     }

@@ -17,9 +17,9 @@ Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
     Route::get('dashboard/team/roster', [TeamMemberController::class, 'roster'])->middleware('permission:team.view');
     Route::get('dashboard/team/reports', [TeamMemberController::class, 'export'])->middleware('permission:team.view');
     Route::post('dashboard/team/company-partners', [TeamMemberController::class, 'storeCompanyPartner'])
-        ->middleware(['permission:team.view', 'subscription']);
+        ->middleware(['permission:team.view', 'subscription', 'plan.feature:team']);
     Route::post('dashboard/team/company-partners/{id}/convert', [TeamMemberController::class, 'convertCompanyPartner'])
-        ->middleware(['permission:invitation.create', 'subscription']);
+        ->middleware(['permission:invitation.create', 'subscription', 'plan.feature:team']);
     Route::get('dashboard/team/{id}', [TeamMemberController::class, 'show'])->middleware('permission:team.view');
     Route::put('dashboard/team/{id}', [TeamMemberController::class, 'update'])->middleware('permission:team.view');
     Route::post('dashboard/team/{id}/activities', [TeamMemberController::class, 'storeActivity'])->middleware('permission:team.view');
@@ -30,5 +30,5 @@ Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
         ->middleware(['permission:commission.view', 'throttle:6,1']);
 
     Route::post('invitations', [InvitationController::class, 'store'])
-        ->middleware('permission:invitation.create');
+        ->middleware(['permission:invitation.create', 'subscription', 'plan.feature:team']);
 });

@@ -6,6 +6,8 @@ namespace App\Modules\MLM\Actions;
 
 use App\Models\User;
 use App\Modules\MLM\Models\Invitation;
+use App\Modules\MLM\Models\Referral;
+use App\Modules\Subscription\Services\PlanEntitlements;
 use App\Shared\Enums\InvitationStatus;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +28,20 @@ class CreateInvitationAction
             throw ValidationException::withMessages([
                 'email' => ['El líder no tiene una red activa.'],
             ]);
+        }
+
+        $max = PlanEntitlements::maxPartners($leader);
+        if ($max !== null) {
+            $inNetwork = Referral::query()
+                ->where('network_id', $leader->current_network_id)
+                ->where('referrer_id', $leader->id)
+                ->count();
+
+            if ($inNetwork >= $max) {
+                throw ValidationException::withMessages([
+                    'email' => ["Tu plan admite hasta {$max} socios en red. Pasa a Intermedio o Premium para ampliar el cupo."],
+                ]);
+            }
         }
 
         $email = mb_strtolower(trim($email));

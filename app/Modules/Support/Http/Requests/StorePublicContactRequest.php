@@ -21,6 +21,7 @@ class StorePublicContactRequest extends FormRequest
             'email' => ['required', 'email', 'max:180'],
             'subject' => ['nullable', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:5000'],
+            'source' => ['nullable', 'string', 'in:landing,meta-ads'],
         ];
     }
 }

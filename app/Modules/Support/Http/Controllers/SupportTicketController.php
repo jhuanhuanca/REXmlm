@@ -25,7 +25,7 @@ class SupportTicketController extends Controller
         $data = $request->validated();
 
         return $this->tickets->send('POST', '/support-tickets', [], [
-            'source' => 'landing',
+            'source' => filled($data['source'] ?? null) ? $data['source'] : 'landing',
             'name' => $data['name'],
             'email' => $data['email'],
             'subject' => filled($data['subject'] ?? null) ? $data['subject'] : 'Consulta desde la web',

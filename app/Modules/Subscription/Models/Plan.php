@@ -16,19 +16,23 @@ class Plan extends Model
         'name',
         'slug',
         'price',
+        'intro_price',
         'currency',
         'interval',
         'commission_percentage',
         'features',
         'stripe_price_id',
         'paddle_price_id',
+        'paddle_intro_discount_id',
         'is_active',
+        'sort_order',
     ];
 
     protected function casts(): array
     {
         return [
             'price' => 'decimal:2',
+            'intro_price' => 'decimal:2',
             'commission_percentage' => 'decimal:2',
             'features' => 'array',
             'is_active' => 'boolean',
@@ -59,5 +63,19 @@ class Plan extends Model
         $id = trim((string) ($this->paddle_price_id ?: $this->stripe_price_id ?: ''));
 
         return $id !== '' ? $id : null;
+    }
+
+    public function paddleIntroDiscountId(): ?string
+    {
+        $id = trim((string) ($this->paddle_intro_discount_id ?? ''));
+
+        return $id !== '' ? $id : null;
+    }
+
+    public function introPrice(): float
+    {
+        $value = (float) ($this->intro_price ?? 1);
+
+        return $value > 0 ? $value : 1.0;
     }
 }

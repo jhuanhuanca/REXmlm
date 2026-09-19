@@ -11,6 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('inventory:scan-alerts')->dailyAt('08:00');
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 Schedule::command('invitations:expire')->daily();
+Schedule::command('rexmlm:notify-subscription-lifecycle')->hourly();
 Schedule::command('catalog:refresh-user-companies')->dailyAt('03:30');
 Schedule::command('catalog:sync-stores')->everyFifteenMinutes()->withoutOverlapping(20);
 Schedule::command('horizon:snapshot')->everyFiveMinutes();

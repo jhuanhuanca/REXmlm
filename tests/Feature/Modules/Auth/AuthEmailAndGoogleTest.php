@@ -223,4 +223,18 @@ class AuthEmailAndGoogleTest extends TestCase
 
         return $user->fresh();
     }
+
+    public function test_leader_can_change_password(): void
+    {
+        $ana = $this->leader('ana-pass@auth.test');
+        Sanctum::actingAs($ana);
+
+        $this->putJson('/api/v1/auth/password', [
+            'current_password' => 'password',
+            'password' => 'nuevaClave99',
+            'password_confirmation' => 'nuevaClave99',
+        ])->assertOk();
+
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('nuevaClave99', $ana->fresh()->getAuthPassword()));
+    }
 }

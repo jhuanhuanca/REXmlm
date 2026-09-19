@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             App\Modules\Store\Console\SyncCompanyCatalogCommand::class,
             App\Console\GoLiveCheckCommand::class,
             App\Modules\Subscription\Console\GrantComplimentarySubscriptionCommand::class,
+            App\Modules\Subscription\Console\NotifySubscriptionLifecycleCommand::class,
             App\Modules\Organization\Console\RefreshUserCatalogCompaniesCommand::class,
             App\Modules\MLM\Console\ExpireInvitationsCommand::class,
         ])
@@ -43,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'subscription' => EnsureActiveSubscription::class,
+            'plan.feature' => \App\Http\Middleware\EnsurePlanFeature::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

@@ -17,6 +17,7 @@ Route::prefix('auth')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
         Route::get('user', [AuthController::class, 'me']);
+        Route::put('password', [AuthController::class, 'updatePassword'])->middleware('throttle:6,1');
 
         Route::post('two-factor/setup', [TwoFactorController::class, 'setup'])->middleware('throttle:auth');
         Route::post('two-factor/confirm', [TwoFactorController::class, 'confirm'])->middleware('throttle:auth');

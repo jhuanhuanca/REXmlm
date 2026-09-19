@@ -24,6 +24,7 @@ class UpdateTeamMemberRequest extends FormRequest
             'crm_stage' => ['sometimes', 'string', Rule::enum(TeamCrmStage::class)],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'follow_up_at' => ['sometimes', 'nullable', 'date'],
+            'can_sell_inventory' => ['sometimes', 'boolean'],
         ];
     }
 }

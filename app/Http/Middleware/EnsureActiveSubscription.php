@@ -23,7 +23,8 @@ class EnsureActiveSubscription
         }
 
         return response()->json([
-            'message' => 'Se requiere una suscripción activa para esta acción.',
+            'message' => 'Tu suscripción no está al día. Paga el plan para seguir usando tienda, landing y equipo.',
+            'code' => 'subscription_past_due',
         ], 403);
     }
 }

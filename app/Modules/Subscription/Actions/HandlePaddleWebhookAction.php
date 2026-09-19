@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Subscription\Actions;
 
+use App\Mail\SubscriptionPastDueMail;
 use App\Models\User;
 use App\Modules\Commission\Actions\AccrueReferralSubscriptionCommission;
 use App\Modules\MLM\Actions\PromotePartnerToLeaderAction;
@@ -12,6 +13,7 @@ use App\Modules\Subscription\Models\Plan;
 use App\Modules\Subscription\Models\Subscription;
 use App\Shared\Enums\NetworkStatus;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class HandlePaddleWebhookAction
 {
@@ -46,7 +48,7 @@ class HandlePaddleWebhookAction
         $kind = (string) ($custom['kind'] ?? '');
 
         if ($kind === 'secondary_company') {
-            $this->completeSecondaryCompany($custom);
+            $this->completeSecondaryCompany($custom, $data);
 
             return;
         }
@@ -58,8 +60,9 @@ class HandlePaddleWebhookAction
 
     /**
      * @param  array<string, mixed>  $custom
+     * @param  array<string, mixed>  $data
      */
-    private function completeSecondaryCompany(array $custom): void
+    private function completeSecondaryCompany(array $custom, array $data): void
     {
         $userId = (int) ($custom['user_id'] ?? 0);
         $companyId = (int) ($custom['catalog_company_id'] ?? 0);
@@ -72,6 +75,12 @@ class HandlePaddleWebhookAction
         }
 
         if ($user->hasCompanyMembership($companyId)) {
+            $membership = $user->membershipForCompany($companyId);
+            $membership?->forceFill([
+                'billing_status' => 'active',
+                'paddle_subscription_id' => (string) ($data['subscription_id'] ?? $membership->paddle_subscription_id),
+            ])->save();
+
             return;
         }
 
@@ -81,6 +90,7 @@ class HandlePaddleWebhookAction
             isset($custom['catalog_rank_id']) ? (int) $custom['catalog_rank_id'] : null,
             isset($custom['catalog_rank_name']) ? (string) $custom['catalog_rank_name'] : null,
             true,
+            (string) ($data['subscription_id'] ?? ''),
         );
     }
 
@@ -101,11 +111,25 @@ class HandlePaddleWebhookAction
             return;
         }
 
+        $cents = $this->transactionTotalCents($data);
+        if ($cents === 0) {
+            Log::warning('Webhook Paddle: cobro a US$ 0 ignorado. No hay mes gratis; el arranque es US$ 1.', [
+                'user_id' => $userId,
+                'plan_id' => $planId,
+            ]);
+
+            return;
+        }
+
         $paddleSubId = (string) ($data['subscription_id'] ?? $data['id'] ?? '');
         $priceId = (string) (data_get($data, 'items.0.price.id') ?: $plan->paddlePriceId() ?: '');
 
-        $this->upsertSubscription($user, $plan, $paddleSubId, $priceId, 'active');
+        $subscription = $this->upsertSubscription($user, $plan, $paddleSubId, $priceId, 'active', $data);
         $this->grantLeaderAccess($user, $plan);
+
+        if (! $this->isIntroCycle($data, $plan)) {
+            $this->accrueCommission->handle($user, $plan, $subscription);
+        }
     }
 
     /**
@@ -114,6 +138,13 @@ class HandlePaddleWebhookAction
     private function onSubscription(array $data): void
     {
         $custom = is_array($data['custom_data'] ?? null) ? $data['custom_data'] : [];
+
+        if ((string) ($custom['kind'] ?? '') === 'secondary_company') {
+            $this->syncSecondaryCompanySubscription($data, $custom);
+
+            return;
+        }
+
         $user = $this->userFromPaddle($data, $custom);
 
         if ($user === null) {
@@ -130,17 +161,55 @@ class HandlePaddleWebhookAction
             return;
         }
 
-        $subscription = $this->upsertSubscription($user, $plan, $paddleSubId, $priceId, $status);
+        $subscription = $this->upsertSubscription($user, $plan, $paddleSubId, $priceId, $status, $data);
 
         if (in_array($status, ['canceled', 'past_due', 'paused'], true)) {
             $subscription->forceFill([
                 'ends_at' => $status === 'canceled' ? now() : $subscription->ends_at,
             ])->save();
 
+            if ($status === 'past_due') {
+                $this->notifyPastDue($user, $subscription);
+            }
+
             return;
         }
 
+        $subscription->forceFill(['past_due_notified_at' => null])->save();
         $this->grantLeaderAccess($user, $plan);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $custom
+     */
+    private function syncSecondaryCompanySubscription(array $data, array $custom): void
+    {
+        $companyId = (int) ($custom['catalog_company_id'] ?? 0);
+        $user = $this->userFromPaddle($data, $custom);
+        $status = $this->mapStatus((string) ($data['status'] ?? 'active'));
+
+        if ($user === null || $companyId < 1) {
+            return;
+        }
+
+        $membership = $user->membershipForCompany($companyId);
+
+        if ($membership === null || $membership->is_primary) {
+            return;
+        }
+
+        $membership->forceFill([
+            'billing_status' => $status,
+            'paddle_subscription_id' => (string) ($data['id'] ?? $membership->paddle_subscription_id),
+        ])->save();
+
+        if (in_array($status, ['canceled', 'past_due', 'paused'], true)
+            && (int) $user->active_catalog_company_id === $companyId
+            && $user->catalog_company_id
+        ) {
+            $user->forceFill(['active_catalog_company_id' => (int) $user->catalog_company_id])->save();
+        }
     }
 
     private function grantLeaderAccess(User $user, Plan $plan): void
@@ -156,13 +225,23 @@ class HandlePaddleWebhookAction
         $user->ownedNetwork()?->update([
             'status' => NetworkStatus::Active,
         ]);
-
-        $subscription = $user->subscription('default');
-        $this->accrueCommission->handle($user, $plan, $subscription);
     }
 
-    private function upsertSubscription(User $user, Plan $plan, string $paddleId, string $priceId, string $status): Subscription
-    {
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function upsertSubscription(
+        User $user,
+        Plan $plan,
+        string $paddleId,
+        string $priceId,
+        string $status,
+        array $data = [],
+    ): Subscription {
+        $nextBilled = $this->timestampFromPaddle(
+            data_get($data, 'next_billed_at') ?: data_get($data, 'current_billing_period.ends_at')
+        );
+
         /** @var Subscription $subscription */
         $subscription = Subscription::query()->updateOrCreate(
             ['stripe_id' => $paddleId],
@@ -175,10 +254,68 @@ class HandlePaddleWebhookAction
                 'plan_id' => $plan->id,
                 'network_id' => $user->current_network_id ?: $user->ownedNetwork?->id,
                 'ends_at' => $status === 'canceled' ? now() : null,
+                'trial_ends_at' => null,
+                'next_billed_at' => $nextBilled,
             ],
         );
 
         return $subscription;
+    }
+
+    private function notifyPastDue(User $user, Subscription $subscription): void
+    {
+        if ($subscription->past_due_notified_at !== null) {
+            return;
+        }
+
+        Mail::to($user->email)->send(new SubscriptionPastDueMail($user, $subscription));
+        $subscription->forceFill(['past_due_notified_at' => now()])->save();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function isIntroCycle(array $data, Plan $plan): bool
+    {
+        $cents = $this->transactionTotalCents($data);
+
+        if ($cents === null) {
+            return false;
+        }
+
+        $listHalf = (int) round(((float) $plan->price) * 50);
+
+        return $cents < max(200, $listHalf);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function transactionTotalCents(array $data): ?int
+    {
+        $raw = data_get($data, 'details.totals.grand_total')
+            ?? data_get($data, 'details.totals.total')
+            ?? data_get($data, 'details.totals.subtotal')
+            ?? data_get($data, 'items.0.price.unit_price.amount');
+
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        return (int) $raw;
+    }
+
+    private function timestampFromPaddle(mixed $value): ?\Illuminate\Support\Carbon
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -203,8 +340,7 @@ class HandlePaddleWebhookAction
     private function mapStatus(string $paddleStatus): string
     {
         return match ($paddleStatus) {
-            'active' => 'active',
-            'trialing' => 'trialing',
+            'active', 'trialing' => 'active',
             'past_due' => 'past_due',
             'paused' => 'paused',
             'canceled', 'cancelled' => 'canceled',

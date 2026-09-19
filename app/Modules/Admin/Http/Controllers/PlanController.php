@@ -18,7 +18,7 @@ class PlanController extends Controller
 {
     public function index(): AnonymousResourceCollection
     {
-        return PlanResource::collection(Plan::query()->orderBy('price')->get());
+        return PlanResource::collection(Plan::query()->orderBy('sort_order')->orderBy('price')->get());
     }
 
     public function store(StorePlanRequest $request): JsonResponse

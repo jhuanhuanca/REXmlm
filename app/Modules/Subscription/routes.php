@@ -11,5 +11,7 @@ Route::post('billing/webhook', [SubscriptionController::class, 'webhook']);
 
 Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
     Route::get('subscriptions/current', [SubscriptionController::class, 'current']);
+    Route::get('subscriptions/invoices', [SubscriptionController::class, 'invoices']);
     Route::post('subscriptions', [SubscriptionController::class, 'store']);
+    Route::post('subscriptions/cancel', [SubscriptionController::class, 'cancel']);
 });

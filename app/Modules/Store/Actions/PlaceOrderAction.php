@@ -39,7 +39,7 @@ class PlaceOrderAction
 
         $store->loadMissing('user');
         $channel = ($data['channel'] ?? 'ecommerce') === 'pos' ? 'pos' : 'ecommerce';
-        $partnerId = $channel === 'pos' ? null : $this->team->partnerIdOnTeam($store, $data['partner_user_id'] ?? null, $actor);
+        $partnerId = $this->resolvePartnerId($store, $data, $actor, $channel);
 
         return DB::transaction(function () use ($store, $data, $partnerId, $channel) {
             $order = Order::create([
@@ -89,7 +89,7 @@ class PlaceOrderAction
                 $lot = null;
                 $fromLot = 0;
 
-                if ($partnerId !== null && $consumesStock) {
+                if ($partnerId !== null && $consumesStock && $channel !== 'pos') {
                     $lot = InventoryAllocation::query()
                         ->where('store_id', $store->id)
                         ->where('product_id', $product->id)
@@ -231,5 +231,21 @@ class PlaceOrderAction
 
             return $order->load(['items', 'partner:id,name,email']);
         });
+    }
+
+    /**
+     * @param  array{partner_user_id?: int|null}  $data
+     */
+    private function resolvePartnerId(Store $store, array $data, ?User $actor, string $channel): ?int
+    {
+        if ($channel === 'pos') {
+            if ($actor === null || (int) $actor->id === (int) $store->user_id) {
+                return null;
+            }
+
+            return $this->team->partnerIdOnTeam($store, $actor->id, $actor);
+        }
+
+        return $this->team->partnerIdOnTeam($store, $data['partner_user_id'] ?? null, $actor);
     }
 }

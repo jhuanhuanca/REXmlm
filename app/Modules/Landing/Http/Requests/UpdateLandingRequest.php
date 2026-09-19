@@ -55,6 +55,7 @@ class UpdateLandingRequest extends FormRequest
             'content.reasons.benefits.*' => ['nullable', 'string', 'max:80'],
             'content.logo' => ['nullable', 'string', 'max:2048'],
             'content.whatsapp' => ['nullable', 'string', 'max:30'],
+            'content.whatsapp_label' => ['nullable', 'string', 'max:80'],
             'content.blocks' => ['sometimes', 'array', 'max:30'],
             'content.blocks.*.type' => ['required', Rule::in($blockTypes)],
             'content.blocks.*.body' => ['nullable', 'string', 'max:5000'],
