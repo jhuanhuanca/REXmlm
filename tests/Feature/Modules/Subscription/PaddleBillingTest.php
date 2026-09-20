@@ -243,6 +243,54 @@ class PaddleBillingTest extends TestCase
         ]);
     }
 
+    public function test_later_renewals_or_new_subscriptions_do_not_accrue_again(): void
+    {
+        $plan = Plan::query()->create([
+            'name' => 'Intermedio',
+            'slug' => 'intermedio-once',
+            'price' => 49,
+            'intro_price' => 1,
+            'currency' => 'USD',
+            'interval' => 'month',
+            'commission_percentage' => 10,
+            'paddle_price_id' => 'pri_once',
+            'is_active' => true,
+        ]);
+        $leader = $this->leader('ref-once@bill.test');
+        $ana = $this->leader('ana-once@bill.test');
+        $ana->forceFill(['sponsor_user_id' => $leader->id])->save();
+
+        $first = [
+            'event_type' => 'transaction.completed',
+            'data' => [
+                'id' => 'txn_once_1',
+                'subscription_id' => 'sub_once_1',
+                'details' => ['totals' => ['grand_total' => '4900']],
+                'custom_data' => [
+                    'kind' => 'platform_plan',
+                    'user_id' => (string) $ana->id,
+                    'plan_id' => (string) $plan->id,
+                ],
+                'items' => [['price' => ['id' => 'pri_once']]],
+            ],
+        ];
+        $renewal = $first;
+        $renewal['data']['id'] = 'txn_once_2';
+        $resubscribe = $first;
+        $resubscribe['data']['id'] = 'txn_once_3';
+        $resubscribe['data']['subscription_id'] = 'sub_once_2';
+
+        $this->callWebhook(json_encode($first, JSON_THROW_ON_ERROR))->assertOk();
+        $this->callWebhook(json_encode($renewal, JSON_THROW_ON_ERROR))->assertOk();
+        $this->callWebhook(json_encode($resubscribe, JSON_THROW_ON_ERROR))->assertOk();
+
+        $this->assertDatabaseCount('commissions', 1);
+        $this->assertDatabaseHas('commissions', [
+            'referred_id' => $ana->id,
+            'amount' => 4.9,
+        ]);
+    }
+
     public function test_past_due_locks_leader_modules(): void
     {
         $plan = Plan::query()->create([

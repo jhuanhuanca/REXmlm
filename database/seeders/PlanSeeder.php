@@ -20,6 +20,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'month',
                 'sort_order' => 1,
+                'paddle_price_id' => 'pri_01m2vst8etcnwn8kt770c7zh5n',
+                'paddle_intro_discount_id' => 'dsc_01m2vtdv6rwrb609nj92h4yqsb',
             ],
             [
                 'name' => 'Intermedio',
@@ -28,6 +30,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'month',
                 'sort_order' => 2,
+                'paddle_price_id' => 'pri_01m2vt01r1fmx4wbkdx045kfqb',
+                'paddle_intro_discount_id' => 'dsc_01m2vtfje8ys80417tqgzv9kyq',
             ],
             [
                 'name' => 'Premium',
@@ -36,6 +40,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'month',
                 'sort_order' => 3,
+                'paddle_price_id' => 'pri_01m2vt3fdene9xf8hgqp9eczb1',
+                'paddle_intro_discount_id' => 'dsc_01m2vthhs71ra4hxw5hkzqy2vh',
             ],
             [
                 'name' => 'Básico anual',
@@ -44,6 +50,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'year',
                 'sort_order' => 4,
+                'paddle_price_id' => 'pri_01m2vswgfw22v5dak08r7kmnwk',
+                'paddle_intro_discount_id' => 'dsc_01m2vtjnn07prh6wa6599rprcc',
             ],
             [
                 'name' => 'Intermedio anual',
@@ -52,6 +60,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'year',
                 'sort_order' => 5,
+                'paddle_price_id' => 'pri_01m2vt15bp9rp9aq4hgvwxrht8',
+                'paddle_intro_discount_id' => 'dsc_01m2vtktk6zs54sf9h2dz00hen',
             ],
             [
                 'name' => 'Premium anual',
@@ -60,6 +70,8 @@ class PlanSeeder extends Seeder
                 'intro_price' => 1,
                 'interval' => 'year',
                 'sort_order' => 6,
+                'paddle_price_id' => 'pri_01m2vt4ft9dt18636z01ezb0cm',
+                'paddle_intro_discount_id' => 'dsc_01m2vtmvkv1246hg1p9apgdrx4',
             ],
         ];
 
@@ -72,6 +84,8 @@ class PlanSeeder extends Seeder
                     'intro_price' => $plan['intro_price'],
                     'currency' => 'USD',
                     'interval' => $plan['interval'],
+                    'paddle_price_id' => $plan['paddle_price_id'],
+                    'paddle_intro_discount_id' => $plan['paddle_intro_discount_id'],
                     'commission_percentage' => 10,
                     'features' => PlanEntitlements::catalog($plan['slug']),
                     'is_active' => true,

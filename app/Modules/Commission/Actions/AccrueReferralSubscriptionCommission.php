@@ -30,6 +30,16 @@ class AccrueReferralSubscriptionCommission
             return null;
         }
 
+        $existing = Commission::query()
+            ->where('referred_id', $referred->id)
+            ->whereIn('source_type', ['subscription_invoice', 'partner_upgrade', 'referral_subscription'])
+            ->whereNotIn('status', [CommissionStatus::Cancelled, CommissionStatus::Reversed])
+            ->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $percentage = (float) config('rexmlm.referral_subscription_commission', 10);
         $amount = round(((float) $plan->price) * ($percentage / 100), 2);
 
@@ -37,15 +47,10 @@ class AccrueReferralSubscriptionCommission
             return null;
         }
 
-        $sourceType = $subscription ? 'subscription_invoice' : 'partner_upgrade';
-        $sourceId = $subscription
-            ? (string) $subscription->id
-            : 'plan:'.$plan->id.':user:'.$referred->id;
-
         $commission = Commission::query()->firstOrCreate(
             [
-                'source_type' => $sourceType,
-                'source_id' => $sourceId,
+                'source_type' => $subscription ? 'subscription_invoice' : 'partner_upgrade',
+                'source_id' => 'lifetime:'.$referred->id,
                 'referrer_id' => $referrerId,
             ],
             [
@@ -62,6 +67,7 @@ class AccrueReferralSubscriptionCommission
                     'plan_price' => (float) $plan->price,
                     'plan_currency' => $plan->currency ?: Currencies::COMMISSION,
                     'reason' => 'referred_became_leader',
+                    'basis' => 'list_price_once',
                 ],
             ],
         );
