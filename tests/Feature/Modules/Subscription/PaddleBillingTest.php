@@ -80,6 +80,55 @@ class PaddleBillingTest extends TestCase
             ->assertJsonPath('offline', false);
     }
 
+    public function test_local_placeholder_subscription_still_opens_paddle_checkout(): void
+    {
+        Http::fake([
+            'sandbox-api.paddle.com/customers' => Http::response([
+                'data' => ['id' => 'ctm_local'],
+            ], 201),
+            'sandbox-api.paddle.com/transactions' => Http::response([
+                'data' => [
+                    'id' => 'txn_local',
+                    'checkout' => ['url' => 'https://sandbox-buy.paddle.com/txn_local'],
+                ],
+            ], 201),
+        ]);
+
+        $plan = Plan::query()->create([
+            'name' => 'Intermedio',
+            'slug' => 'intermedio-local-pay',
+            'price' => 49,
+            'intro_price' => 1,
+            'currency' => 'USD',
+            'interval' => 'month',
+            'commission_percentage' => 10,
+            'paddle_price_id' => 'pri_local',
+            'paddle_intro_discount_id' => 'dsc_local',
+            'is_active' => true,
+        ]);
+        $ana = $this->leader('ana-local-pay@bill.test');
+        $ana->subscriptions()->create([
+            'type' => 'default',
+            'stripe_id' => 'local_'.$ana->id,
+            'stripe_status' => 'active',
+            'stripe_price' => 'local',
+            'quantity' => 1,
+            'plan_id' => $plan->id,
+        ]);
+
+        $this->assertFalse($ana->fresh()->hasPaidPlatformAccess());
+
+        Sanctum::actingAs($ana);
+        $this->postJson('/api/v1/subscriptions', ['plan_id' => $plan->id])
+            ->assertOk()
+            ->assertJsonPath('checkout_url', 'https://sandbox-buy.paddle.com/txn_local');
+
+        $this->assertDatabaseMissing('subscriptions', [
+            'user_id' => $ana->id,
+            'stripe_id' => 'local_'.$ana->id,
+        ]);
+    }
+
     public function test_paddle_webhook_activates_subscription(): void
     {
         $plan = Plan::query()->create([

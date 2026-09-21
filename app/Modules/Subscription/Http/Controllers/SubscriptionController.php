@@ -86,7 +86,8 @@ class SubscriptionController extends Controller
             && ! $user->hasRole(config('rexmlm.roles.leader'));
         $offline = (bool) config('billing.offline');
         $existing = $user->subscription('default');
-        $paddleSub = $existing && str_starts_with((string) $existing->stripe_id, 'sub_');
+        $existingId = (string) ($existing?->stripe_id ?? '');
+        $paddleSub = $existing !== null && str_starts_with($existingId, 'sub_');
 
         if ($paddle->configured() && ! $offline) {
             if ($paddleSub) {
@@ -99,6 +100,10 @@ class SubscriptionController extends Controller
                     'user' => new AuthUserResource($user),
                     'subscription' => $subscription,
                 ]);
+            }
+
+            if ($existing !== null && str_starts_with($existingId, 'local_')) {
+                $existing->delete();
             }
 
             $url = $checkout->hostedCheckoutUrl($user, $plan);

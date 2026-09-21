@@ -226,6 +226,11 @@ class User extends Authenticatable
             return false;
         }
 
+        $id = (string) $subscription->stripe_id;
+        if (str_starts_with($id, 'local_')) {
+            return false;
+        }
+
         $statusOk = in_array((string) $subscription->stripe_status, ['active', 'trialing'], true);
         $notEnded = $subscription->ends_at === null || $subscription->ends_at->isFuture();
 
