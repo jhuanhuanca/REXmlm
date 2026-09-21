@@ -56,6 +56,26 @@ class PaddleClient
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function findCustomerByEmail(string $email): ?array
+    {
+        $rows = $this->list('/customers', ['email' => $email]);
+
+        if (isset($rows['id']) && is_string($rows['id']) && str_starts_with($rows['id'], 'ctm_')) {
+            return $rows;
+        }
+
+        foreach ($rows as $row) {
+            if (is_array($row) && isset($row['id']) && str_starts_with((string) $row['id'], 'ctm_')) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */

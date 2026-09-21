@@ -47,7 +47,7 @@ class PaddleBillingTest extends TestCase
     public function test_subscribe_returns_paddle_checkout_url(): void
     {
         Http::fake([
-            'sandbox-api.paddle.com/customers' => Http::response([
+            'sandbox-api.paddle.com/customers*' => Http::response([
                 'data' => ['id' => 'ctm_01test'],
             ], 201),
             'sandbox-api.paddle.com/transactions' => Http::response([
@@ -80,10 +80,64 @@ class PaddleBillingTest extends TestCase
             ->assertJsonPath('offline', false);
     }
 
+    public function test_existing_paddle_customer_email_reuses_ctm_id(): void
+    {
+        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+            $url = $request->url();
+            if (str_contains($url, '/customers') && $request->method() === 'GET') {
+                return Http::response([
+                    'data' => [[
+                        'id' => 'ctm_01ktyswqdvyz8g2z1zk22c3yq3',
+                        'email' => 'ana-conflict@bill.test',
+                    ]],
+                ], 200);
+            }
+            if (str_contains($url, '/customers') && $request->method() === 'POST') {
+                return Http::response([
+                    'error' => [
+                        'code' => 'conflict',
+                        'detail' => 'customer email conflicts with customer of id ctm_01ktyswqdvyz8g2z1zk22c3yq3',
+                    ],
+                ], 409);
+            }
+            if (str_contains($url, '/transactions')) {
+                return Http::response([
+                    'data' => [
+                        'id' => 'txn_conflict',
+                        'checkout' => ['url' => 'https://sandbox-buy.paddle.com/txn_conflict'],
+                    ],
+                ], 201);
+            }
+
+            return Http::response(['data' => []], 200);
+        });
+
+        $plan = Plan::query()->create([
+            'name' => 'Intermedio',
+            'slug' => 'intermedio-conflict',
+            'price' => 49,
+            'intro_price' => 1,
+            'currency' => 'USD',
+            'interval' => 'month',
+            'commission_percentage' => 10,
+            'paddle_price_id' => 'pri_conflict',
+            'paddle_intro_discount_id' => 'dsc_conflict',
+            'is_active' => true,
+        ]);
+        $ana = $this->leader('ana-conflict@bill.test');
+        Sanctum::actingAs($ana);
+
+        $this->postJson('/api/v1/subscriptions', ['plan_id' => $plan->id])
+            ->assertOk()
+            ->assertJsonPath('checkout_url', 'https://sandbox-buy.paddle.com/txn_conflict');
+
+        $this->assertSame('ctm_01ktyswqdvyz8g2z1zk22c3yq3', $ana->fresh()->stripe_id);
+    }
+
     public function test_local_placeholder_subscription_still_opens_paddle_checkout(): void
     {
         Http::fake([
-            'sandbox-api.paddle.com/customers' => Http::response([
+            'sandbox-api.paddle.com/customers*' => Http::response([
                 'data' => ['id' => 'ctm_local'],
             ], 201),
             'sandbox-api.paddle.com/transactions' => Http::response([
@@ -430,7 +484,7 @@ class PaddleBillingTest extends TestCase
     public function test_checkout_sends_intro_discount_id(): void
     {
         Http::fake([
-            'sandbox-api.paddle.com/customers' => Http::response(['data' => ['id' => 'ctm_dsc']], 201),
+            'sandbox-api.paddle.com/customers*' => Http::response(['data' => ['id' => 'ctm_dsc']], 201),
             'sandbox-api.paddle.com/transactions' => Http::response([
                 'data' => [
                     'id' => 'txn_dsc',

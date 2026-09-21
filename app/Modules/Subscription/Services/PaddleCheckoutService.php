@@ -130,17 +130,32 @@ class PaddleCheckoutService
             return (string) $user->stripe_id;
         }
 
-        $customer = $this->paddle->createCustomer([
-            'email' => $user->email,
-            'name' => $user->name,
-            'custom_data' => [
-                'user_id' => (string) $user->id,
-            ],
-        ]);
-
-        $id = (string) ($customer['id'] ?? '');
+        $existing = $this->paddle->findCustomerByEmail((string) $user->email);
+        $id = (string) ($existing['id'] ?? '');
 
         if ($id === '') {
+            try {
+                $customer = $this->paddle->createCustomer([
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'custom_data' => [
+                        'user_id' => (string) $user->id,
+                    ],
+                ]);
+                $id = (string) ($customer['id'] ?? '');
+            } catch (ValidationException $exception) {
+                $id = $this->customerIdFromConflict($exception) ?? '';
+                if ($id === '') {
+                    $retry = $this->paddle->findCustomerByEmail((string) $user->email);
+                    $id = (string) ($retry['id'] ?? '');
+                }
+                if ($id === '') {
+                    throw $exception;
+                }
+            }
+        }
+
+        if ($id === '' || ! str_starts_with($id, 'ctm_')) {
             throw ValidationException::withMessages([
                 'plan_id' => ['Paddle no creó el cliente.'],
             ]);
@@ -149,6 +164,18 @@ class PaddleCheckoutService
         $user->forceFill(['stripe_id' => $id])->save();
 
         return $id;
+    }
+
+    private function customerIdFromConflict(ValidationException $exception): ?string
+    {
+        $messages = $exception->errors()['plan_id'] ?? [];
+        $text = implode(' ', array_map(strval(...), $messages));
+
+        if (! preg_match('/ctm_[a-zA-Z0-9]+/', $text, $match)) {
+            return null;
+        }
+
+        return $match[0];
     }
 
     /**
