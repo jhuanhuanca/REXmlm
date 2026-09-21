@@ -28,12 +28,34 @@ class SubscriptionController extends Controller
 {
     public function overlay(): JsonResponse
     {
-        $token = trim((string) config('services.paddle.client_token', ''));
+        $token = $this->paddleClientToken();
 
         return response()->json([
             'client_token' => $token !== '' ? $token : null,
             'sandbox' => (bool) config('services.paddle.sandbox'),
         ]);
+    }
+
+    private function paddleClientToken(): string
+    {
+        $candidates = [
+            config('services.paddle.client_token'),
+            $_ENV['PADDLE_CLIENT_TOKEN'] ?? null,
+            $_SERVER['PADDLE_CLIENT_TOKEN'] ?? null,
+            getenv('PADDLE_CLIENT_TOKEN') ?: null,
+        ];
+
+        foreach ($candidates as $value) {
+            if (! is_string($value)) {
+                continue;
+            }
+            $token = trim($value, " \t\n\r\0\x0B\"'");
+            if ($token !== '' && (str_starts_with($token, 'live_') || str_starts_with($token, 'test_'))) {
+                return $token;
+            }
+        }
+
+        return '';
     }
 
     public function current(Request $request): JsonResponse
