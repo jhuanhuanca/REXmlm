@@ -7,6 +7,7 @@ use App\Modules\Subscription\Http\Controllers\SubscriptionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('plans', [PlanController::class, 'index']);
+Route::get('billing/overlay', [SubscriptionController::class, 'overlay']);
 Route::post('billing/webhook', [SubscriptionController::class, 'webhook']);
 
 Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {

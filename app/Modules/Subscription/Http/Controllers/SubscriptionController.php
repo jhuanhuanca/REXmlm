@@ -26,6 +26,16 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SubscriptionController extends Controller
 {
+    public function overlay(): JsonResponse
+    {
+        $token = trim((string) config('services.paddle.client_token', ''));
+
+        return response()->json([
+            'client_token' => $token !== '' ? $token : null,
+            'sandbox' => (bool) config('services.paddle.sandbox'),
+        ]);
+    }
+
     public function current(Request $request): JsonResponse
     {
         $user = $request->user();

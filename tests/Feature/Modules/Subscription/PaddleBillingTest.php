@@ -44,6 +44,16 @@ class PaddleBillingTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_overlay_config_is_public(): void
+    {
+        config(['services.paddle.client_token' => 'live_overlay_test', 'services.paddle.sandbox' => false]);
+
+        $this->getJson('/api/v1/billing/overlay')
+            ->assertOk()
+            ->assertJsonPath('client_token', 'live_overlay_test')
+            ->assertJsonPath('sandbox', false);
+    }
+
     public function test_subscribe_returns_paddle_checkout_url(): void
     {
         Http::fake([

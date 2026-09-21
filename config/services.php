@@ -43,6 +43,7 @@ return [
         'api_key' => env('PADDLE_API_KEY'),
         'webhook_secret' => env('PADDLE_WEBHOOK_SECRET'),
         'sandbox' => filter_var(env('PADDLE_SANDBOX', true), FILTER_VALIDATE_BOOL),
+        'client_token' => env('PADDLE_CLIENT_TOKEN'),
         'success_url' => env('PADDLE_SUCCESS_URL', env('FRONTEND_URL', 'http://localhost:5173').'/app?billing=success'),
         'cancel_url' => env('PADDLE_CANCEL_URL', env('FRONTEND_URL', 'http://localhost:5173').'/app/plan?billing=cancel'),
     ],
