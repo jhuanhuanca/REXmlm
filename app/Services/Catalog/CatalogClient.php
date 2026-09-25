@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Catalog;
 
+use App\Modules\Tools\CompanyToolCatalog;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -19,6 +20,41 @@ class CatalogClient
     public function getCompany(int $id): mixed
     {
         return $this->get("/companies/{$id}");
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function enabledToolsForCompany(?int $companyId): array
+    {
+        if (! $companyId) {
+            return CompanyToolCatalog::KEYS;
+        }
+
+        try {
+            $payload = $this->get("/companies/{$companyId}");
+        } catch (RuntimeException) {
+            return CompanyToolCatalog::KEYS;
+        }
+
+        $company = is_array($payload['data'] ?? null) ? $payload['data'] : $payload;
+        if (! is_array($company)) {
+            return CompanyToolCatalog::KEYS;
+        }
+
+        $raw = $company['enabled_tools'] ?? null;
+
+        return CompanyToolCatalog::normalize(is_array($raw) ? $raw : null);
+    }
+
+    public function forgetCompanyCaches(?int $companyId = null): void
+    {
+        Cache::forget('catalog:companies');
+        Cache::forget('catalog:registration-options');
+
+        if ($companyId && $companyId > 0) {
+            Cache::forget('catalog:branding:'.$companyId);
+        }
     }
 
     /**

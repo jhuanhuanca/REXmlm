@@ -41,6 +41,24 @@ class CatalogProxyController extends Controller
 
         $status = (int) $forwarded['status'];
 
+        if ($status >= 200 && $status < 300 && ! in_array($request->method(), ['GET', 'HEAD'], true)) {
+            $this->forgetCompanyCaches($path);
+        }
+
         return response()->json($forwarded['body'], $status >= 100 && $status < 600 ? $status : 502);
+    }
+
+    private function forgetCompanyCaches(string $path): void
+    {
+        if ($path !== 'companies' && ! str_starts_with($path, 'companies/')) {
+            return;
+        }
+
+        $companyId = null;
+        if (preg_match('#^companies/(\d+)$#', $path, $match) === 1) {
+            $companyId = (int) $match[1];
+        }
+
+        $this->catalog->forgetCompanyCaches($companyId);
     }
 }

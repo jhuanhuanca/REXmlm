@@ -174,6 +174,46 @@ class CompanyToolsTest extends TestCase
             ->assertJsonPath('data.0.url', 'https://ejemplo.com/audio.mp3');
     }
 
+    public function test_available_tools_follow_the_company_catalog(): void
+    {
+        Http::fake([
+            'catalog.test/api/v1/companies/7' => Http::response([
+                'data' => [
+                    'id' => 7,
+                    'name' => 'Scentia',
+                    'enabled_tools' => ['imc', 'pdfs'],
+                ],
+            ], 200),
+        ]);
+
+        $leader = $this->leader('ana-avail@inv.test', 7);
+        Sanctum::actingAs($leader);
+
+        $this->getJson('/api/v1/tools/available')
+            ->assertOk()
+            ->assertJsonPath('tools', ['imc', 'pdfs']);
+    }
+
+    public function test_disabled_imc_tool_is_forbidden(): void
+    {
+        Http::fake([
+            'catalog.test/api/v1/companies/7' => Http::response([
+                'data' => [
+                    'id' => 7,
+                    'name' => 'Scentia',
+                    'enabled_tools' => ['wellness'],
+                ],
+            ], 200),
+        ]);
+
+        $leader = $this->leader('ana-noimc@inv.test', 7);
+        Sanctum::actingAs($leader);
+
+        $this->getJson('/api/v1/tools/imc-packages')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'company_tool_disabled');
+    }
+
     private function leader(string $email, int $companyId): User
     {
         $user = User::factory()->create([

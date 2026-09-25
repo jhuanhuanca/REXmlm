@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Tools\Services;
 
 use App\Models\User;
+use App\Modules\Tools\CompanyToolCatalog;
 use App\Services\Catalog\CatalogClient;
 use App\Services\Catalog\CatalogProductAvailability;
 use App\Services\Catalog\CompanyBranding;
@@ -14,6 +15,28 @@ class CompanyToolsService
     public function __construct(
         private readonly CatalogClient $catalog,
     ) {}
+
+    /**
+     * @return array{company: array<string, mixed>|null, tools: list<string>}
+     */
+    public function available(User $user): array
+    {
+        $brand = CompanyBranding::forUser($user);
+        $companyId = (int) ($brand['id'] ?? 0);
+
+        return [
+            'company' => $brand,
+            'tools' => $this->catalog->enabledToolsForCompany($companyId > 0 ? $companyId : null),
+        ];
+    }
+
+    public function allows(User $user, string $key): bool
+    {
+        $brand = CompanyBranding::forUser($user);
+        $companyId = (int) ($brand['id'] ?? 0);
+
+        return in_array($key, $this->catalog->enabledToolsForCompany($companyId > 0 ? $companyId : null), true);
+    }
 
     /**
      * @return array{company: array<string, mixed>|null, data: list<array<string, mixed>>}
@@ -87,6 +110,8 @@ class CompanyToolsService
 
         $mapped = [];
 
+        $enabled = $this->catalog->enabledToolsForCompany($companyId);
+
         foreach ($this->catalog->documentsForCompany($companyId, $type) as $row) {
             $title = trim((string) ($row['title'] ?? ''));
             $url = trim((string) ($row['url'] ?? $row['file_path'] ?? ''));
@@ -98,6 +123,11 @@ class CompanyToolsService
             $file = (string) ($row['file_type'] ?? '');
 
             if ($file === 'voucher') {
+                continue;
+            }
+
+            $toolKey = CompanyToolCatalog::documentKey($file);
+            if ($toolKey !== null && ! in_array($toolKey, $enabled, true)) {
                 continue;
             }
 
