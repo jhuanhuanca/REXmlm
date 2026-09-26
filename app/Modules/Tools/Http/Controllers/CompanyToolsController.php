@@ -40,6 +40,11 @@ class CompanyToolsController extends Controller
         return response()->json($tools->documents($request->user(), $type));
     }
 
+    public function catalogProducts(Request $request, CompanyToolsService $tools): JsonResponse
+    {
+        return $this->guarded($request, $tools, 'ring_sizer', fn () => $tools->catalogProducts($request->user()));
+    }
+
     /**
      * @param  callable(): array<string, mixed>  $payload
      */

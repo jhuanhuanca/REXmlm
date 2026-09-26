@@ -22,10 +22,29 @@ class GoogleAuthRequest extends FormRequest
             'id_token' => ['required', 'string'],
             'invitation_token' => ['nullable', 'string', 'size:64'],
             'country' => ['nullable', 'string', 'size:2', Rule::in($countryCodes)],
-            'catalog_company_id' => ['nullable', 'integer'],
             'catalog_company_name' => ['nullable', 'string', 'max:255'],
-            'catalog_rank_id' => ['nullable', 'integer'],
             'catalog_rank_name' => ['nullable', 'string', 'max:255'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('invitation_token')) {
+            return;
+        }
+
+        $this->merge([
+            'catalog_company_id' => null,
+            'catalog_rank_id' => null,
+            'catalog_company_name' => $this->normalizedName('catalog_company_name'),
+            'catalog_rank_name' => $this->normalizedName('catalog_rank_name'),
+        ]);
+    }
+
+    private function normalizedName(string $key): ?string
+    {
+        $value = trim((string) $this->input($key, ''));
+
+        return $value !== '' ? $value : null;
     }
 }

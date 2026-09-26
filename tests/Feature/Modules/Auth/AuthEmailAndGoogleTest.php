@@ -45,9 +45,16 @@ class AuthEmailAndGoogleTest extends TestCase
             'password' => 'password12',
             'password_confirmation' => 'password12',
             'country' => 'BO',
-            'catalog_company_id' => 1,
-            'catalog_rank_id' => 10,
+            'catalog_company_name' => 'Mi operación',
+            'catalog_rank_name' => 'Director',
         ])->assertCreated();
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'ana-welcome@auth.test',
+            'catalog_company_name' => 'Mi operación',
+            'catalog_rank_name' => 'Director',
+            'catalog_company_id' => null,
+        ]);
 
         Mail::assertSent(WelcomeUserMail::class, function (WelcomeUserMail $mail) {
             return $mail->hasTo('ana-welcome@auth.test');
@@ -84,8 +91,8 @@ class AuthEmailAndGoogleTest extends TestCase
         $this->postJson('/api/v1/auth/google', [
             'id_token' => 'valid-id-token',
             'country' => 'BO',
-            'catalog_company_id' => 1,
-            'catalog_rank_id' => 10,
+            'catalog_company_name' => 'Mi operación',
+            'catalog_rank_name' => 'Director',
         ])->assertCreated()
             ->assertJsonPath('user.email', 'google-leader@auth.test');
 

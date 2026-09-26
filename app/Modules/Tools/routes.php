@@ -10,4 +10,6 @@ Route::middleware(['auth:sanctum', 'two_factor', 'plan.feature:tools'])->group(f
     Route::get('tools/imc-packages', [CompanyToolsController::class, 'imcPackages']);
     Route::get('tools/wellness-needs', [CompanyToolsController::class, 'wellnessNeeds']);
     Route::get('tools/documents', [CompanyToolsController::class, 'documents']);
+    Route::get('tools/catalog-products', [CompanyToolsController::class, 'catalogProducts']);
+    Route::get('tools/inventory-products', [CompanyToolsController::class, 'catalogProducts']);
 });

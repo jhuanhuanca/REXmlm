@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Tools\Services;
 
 use App\Models\User;
+use App\Modules\Store\Models\Product;
 use App\Modules\Tools\CompanyToolCatalog;
 use App\Services\Catalog\CatalogClient;
 use App\Services\Catalog\CatalogProductAvailability;
@@ -142,6 +143,47 @@ class CompanyToolsService
                 'embed_url' => $row['embed_url'] ?? null,
                 'thumbnail' => $row['thumbnail'] ?? null,
                 'filename' => $row['original_name'] ?? null,
+            ];
+        }
+
+        return ['company' => $brand, 'data' => $mapped];
+    }
+
+    /**
+     * @return array{company: array<string, mixed>|null, data: list<array<string, mixed>>}
+     */
+    public function catalogProducts(User $user): array
+    {
+        $brand = CompanyBranding::forUser($user);
+        $store = $user->store;
+
+        if ($store === null) {
+            return ['company' => $brand, 'data' => []];
+        }
+
+        $mapped = [];
+        $products = $store->products()
+            ->with('category')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        foreach ($products as $product) {
+            /** @var Product $product */
+            $name = trim((string) $product->name);
+            $image = trim((string) ($product->image ?? ''));
+
+            if ($name === '' || $image === '') {
+                continue;
+            }
+
+            $mapped[] = [
+                'id' => $product->id,
+                'name' => $name,
+                'image' => $image,
+                'category' => $product->category?->name,
+                'stock' => (int) $product->stock,
+                'catalog_company_id' => $product->catalog_company_id ? (int) $product->catalog_company_id : null,
             ];
         }
 

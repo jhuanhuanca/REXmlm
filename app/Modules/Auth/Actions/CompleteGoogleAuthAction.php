@@ -6,10 +6,8 @@ namespace App\Modules\Auth\Actions;
 
 use App\Models\User;
 use App\Modules\MLM\Models\Invitation;
-use App\Services\Catalog\CatalogClient;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 
 class CompleteGoogleAuthAction
 {
@@ -105,34 +103,29 @@ class CompleteGoogleAuthAction
     private function assertLeaderAffiliation(array $input): array
     {
         $country = strtoupper((string) ($input['country'] ?? ''));
-        $companyId = (int) ($input['catalog_company_id'] ?? 0);
-        $rankId = (int) ($input['catalog_rank_id'] ?? 0);
+        $companyName = trim((string) ($input['catalog_company_name'] ?? ''));
+        $rankName = trim((string) ($input['catalog_rank_name'] ?? ''));
 
-        if ($country === '' || $companyId < 1 || $rankId < 1) {
-            throw ValidationException::withMessages([
-                'id_token' => ['Para crear una cuenta de líder con Google, elige país, empresa y rango, o usa un enlace de invitación.'],
-            ]);
+        $errors = [];
+        if ($country === '') {
+            $errors['country'] = ['Selecciona tu país.'];
+        }
+        if ($companyName === '') {
+            $errors['catalog_company_name'] = ['Escribe el nombre de tu empresa.'];
+        }
+        if ($rankName === '') {
+            $errors['catalog_rank_name'] = ['Escribe tu rango.'];
         }
 
-        try {
-            $affiliation = app(CatalogClient::class)->findCompanyRank($companyId, $rankId);
-        } catch (RuntimeException) {
-            throw ValidationException::withMessages([
-                'catalog_company_id' => ['No se pudo cargar el catálogo de empresas. Inténtalo de nuevo.'],
-            ]);
-        }
-
-        if ($affiliation === null) {
-            throw ValidationException::withMessages([
-                'catalog_rank_id' => ['Elige una empresa y un rango válido de esa empresa.'],
-            ]);
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
 
         $input['country'] = $country;
-        $input['catalog_company_id'] = $affiliation['company_id'];
-        $input['catalog_company_name'] = $affiliation['company_name'];
-        $input['catalog_rank_id'] = $affiliation['rank_id'];
-        $input['catalog_rank_name'] = $affiliation['rank_name'];
+        $input['catalog_company_id'] = null;
+        $input['catalog_rank_id'] = null;
+        $input['catalog_company_name'] = $companyName;
+        $input['catalog_rank_name'] = $rankName;
 
         return $input;
     }

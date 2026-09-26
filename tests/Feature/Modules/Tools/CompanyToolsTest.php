@@ -6,6 +6,9 @@ namespace Tests\Feature\Modules\Tools;
 
 use App\Models\User;
 use App\Modules\MLM\Models\Network;
+use App\Modules\Store\Enums\ProductFulfillment;
+use App\Modules\Store\Enums\ProductSource;
+use App\Modules\Store\Models\Store;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -214,6 +217,59 @@ class CompanyToolsTest extends TestCase
             ->assertJsonPath('code', 'company_tool_disabled');
     }
 
+    public function test_catalog_products_for_ring_try_on(): void
+    {
+        Http::fake([
+            'catalog.test/api/v1/companies/7' => Http::response([
+                'data' => [
+                    'id' => 7,
+                    'name' => 'Scentia',
+                    'enabled_tools' => ['ring_sizer'],
+                ],
+            ], 200),
+        ]);
+
+        $leader = $this->leader('ana-rings@inv.test', 7);
+        $leader->store->products()->create([
+            'name' => 'Anillo solitario',
+            'image' => 'https://ejemplo.com/anillo.png',
+            'price' => 120,
+            'stock' => 4,
+            'is_active' => true,
+            'source' => ProductSource::Personal,
+            'fulfillment' => ProductFulfillment::Stock,
+        ]);
+        $leader->store->products()->create([
+            'name' => 'Sin foto',
+            'image' => '',
+            'price' => 40,
+            'stock' => 2,
+            'is_active' => true,
+            'source' => ProductSource::Personal,
+            'fulfillment' => ProductFulfillment::Stock,
+        ]);
+        $leader->store->products()->create([
+            'name' => 'Inactivo',
+            'image' => 'https://ejemplo.com/oculto.png',
+            'price' => 40,
+            'stock' => 1,
+            'is_active' => false,
+            'source' => ProductSource::Personal,
+            'fulfillment' => ProductFulfillment::Stock,
+        ]);
+        Sanctum::actingAs($leader);
+
+        $this->getJson('/api/v1/tools/catalog-products')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Anillo solitario')
+            ->assertJsonPath('data.0.image', 'https://ejemplo.com/anillo.png')
+            ->assertJsonCount(1, 'data');
+
+        $this->getJson('/api/v1/tools/inventory-products')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Anillo solitario');
+    }
+
     private function leader(string $email, int $companyId): User
     {
         $user = User::factory()->create([
@@ -230,7 +286,15 @@ class CompanyToolsTest extends TestCase
             'status' => 'active',
         ]);
         $user->forceFill(['current_network_id' => $network->id])->save();
+        Store::query()->create([
+            'user_id' => $user->id,
+            'network_id' => $network->id,
+            'name' => 'Tienda '.$user->id,
+            'slug' => 'tienda-tools-'.$user->id,
+            'theme' => 'default',
+            'is_active' => true,
+        ]);
 
-        return $user->fresh();
+        return $user->fresh(['store']);
     }
 }

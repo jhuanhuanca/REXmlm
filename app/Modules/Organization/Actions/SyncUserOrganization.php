@@ -55,6 +55,17 @@ class SyncUserOrganization
             }
         }
 
+        if ($catalogCompanyId === null) {
+            return Organization::query()->create([
+                'catalog_company_id' => null,
+                'name' => $name ?: 'Mi empresa',
+                'slug' => $this->uniqueSlug($name, null),
+                'default_timezone' => config('rexmlm.closing.default_timezone', 'America/La_Paz'),
+                'default_currency' => 'USD',
+                'status' => 'active',
+            ]);
+        }
+
         $slug = $this->slugFor($name, $catalogCompanyId);
         $bySlug = Organization::query()->where('slug', $slug)->first();
         if ($bySlug) {
@@ -96,7 +107,7 @@ class SyncUserOrganization
             return 'empresa-'.$catalogCompanyId;
         }
 
-        return (string) config('rexmlm.closing.first_organization_slug', 'hgw');
+        return 'empresa';
     }
 
     private function uniqueSlug(?string $name, ?int $catalogCompanyId): string
