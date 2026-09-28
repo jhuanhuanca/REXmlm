@@ -16,6 +16,7 @@ class PlanEntitlements
     public const TEAM = 'team';
     public const PARTNER_SELL = 'partner_sell';
     public const CLOSING = 'closing';
+    public const WHATSAPP_CHATBOT = 'whatsapp_chatbot';
 
     /**
      * @return array{
@@ -25,6 +26,7 @@ class PlanEntitlements
      *     team: bool,
      *     partner_sell: bool,
      *     closing: bool,
+     *     whatsapp_chatbot: bool,
      *     max_partners: int|null,
      *     extra_companies: int,
      *     support: string
@@ -40,6 +42,7 @@ class PlanEntitlements
                 'team' => true,
                 'partner_sell' => false,
                 'closing' => false,
+                'whatsapp_chatbot' => false,
                 'max_partners' => 50,
                 'extra_companies' => 0,
                 'support' => 'standard',
@@ -51,6 +54,7 @@ class PlanEntitlements
                 'team' => true,
                 'partner_sell' => true,
                 'closing' => true,
+                'whatsapp_chatbot' => false,
                 'max_partners' => 500,
                 'extra_companies' => 0,
                 'support' => 'standard',
@@ -62,6 +66,7 @@ class PlanEntitlements
                 'team' => true,
                 'partner_sell' => true,
                 'closing' => true,
+                'whatsapp_chatbot' => true,
                 'max_partners' => null,
                 'extra_companies' => 1,
                 'support' => 'priority',
@@ -73,6 +78,7 @@ class PlanEntitlements
                 'team' => true,
                 'partner_sell' => true,
                 'closing' => true,
+                'whatsapp_chatbot' => false,
                 'max_partners' => null,
                 'extra_companies' => 0,
                 'support' => 'standard',
@@ -121,6 +127,7 @@ class PlanEntitlements
                 'team' => true,
                 'partner_sell' => false,
                 'closing' => false,
+                'whatsapp_chatbot' => false,
                 'max_partners' => 0,
                 'extra_companies' => 0,
             ]);
@@ -128,7 +135,7 @@ class PlanEntitlements
 
         if (! $user->hasPaidPlatformAccess()) {
             $flags = self::of($user->subscription('default')?->plan);
-            foreach (['store', 'tools', 'landing', 'team', 'partner_sell', 'closing'] as $key) {
+            foreach (['store', 'tools', 'landing', 'team', 'partner_sell', 'closing', 'whatsapp_chatbot'] as $key) {
                 $flags[$key] = false;
             }
 
@@ -140,25 +147,7 @@ class PlanEntitlements
 
     public static function allows(?User $user, string $feature): bool
     {
-        if ($user === null) {
-            return false;
-        }
-
-        if ($user->hasRole('admin') || (bool) config('billing.offline')) {
-            return true;
-        }
-
-        if ($user->hasRole('partner') && ! $user->hasRole('leader')) {
-            return in_array($feature, [self::TOOLS, self::TEAM], true);
-        }
-
-        if (! $user->hasPaidPlatformAccess()) {
-            return false;
-        }
-
-        $flags = self::of($user->activeSubscription()?->plan);
-
-        return (bool) ($flags[$feature] ?? false);
+        return (bool) (self::forUser($user)[$feature] ?? false);
     }
 
     public static function maxPartners(?User $user): ?int

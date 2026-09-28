@@ -194,7 +194,7 @@ class CompanyToolsTest extends TestCase
 
         $this->getJson('/api/v1/tools/available')
             ->assertOk()
-            ->assertJsonPath('tools', ['imc', 'pdfs']);
+            ->assertJsonPath('tools', ['imc', 'pdfs', 'whatsapp_chatbot']);
     }
 
     public function test_disabled_imc_tool_is_forbidden(): void

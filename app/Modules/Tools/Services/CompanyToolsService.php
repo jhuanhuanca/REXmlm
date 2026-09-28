@@ -6,6 +6,7 @@ namespace App\Modules\Tools\Services;
 
 use App\Models\User;
 use App\Modules\Store\Models\Product;
+use App\Modules\Subscription\Services\PlanEntitlements;
 use App\Modules\Tools\CompanyToolCatalog;
 use App\Services\Catalog\CatalogClient;
 use App\Services\Catalog\CatalogProductAvailability;
@@ -25,9 +26,19 @@ class CompanyToolsService
         $brand = CompanyBranding::forUser($user);
         $companyId = (int) ($brand['id'] ?? 0);
 
+        $tools = $this->catalog->enabledToolsForCompany($companyId > 0 ? $companyId : null);
+        $tools = array_values(array_filter(
+            $tools,
+            static fn (string $key): bool => $key !== 'whatsapp_chatbot',
+        ));
+        if (PlanEntitlements::allows($user, PlanEntitlements::WHATSAPP_CHATBOT)
+            || $this->planLooksPremium($user)) {
+            $tools[] = 'whatsapp_chatbot';
+        }
+
         return [
             'company' => $brand,
-            'tools' => $this->catalog->enabledToolsForCompany($companyId > 0 ? $companyId : null),
+            'tools' => $tools,
         ];
     }
 
@@ -253,5 +264,13 @@ class CompanyToolsService
         }
 
         return $products;
+    }
+
+    private function planLooksPremium(User $user): bool
+    {
+        $plan = $user->subscription('default')?->plan;
+        $hay = strtolower(trim((string) ($plan?->slug ?? '').' '.(string) ($plan?->name ?? '')));
+
+        return str_contains($hay, 'premium') || str_contains($hay, 'enterprise');
     }
 }

@@ -16,6 +16,7 @@ final class CompanyToolCatalog
         'videos',
         'audios',
         'ring_sizer',
+        'whatsapp_chatbot',
     ];
 
     /**
