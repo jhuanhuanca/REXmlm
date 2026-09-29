@@ -40,7 +40,7 @@ class AccrueReferralSubscriptionCommission
             return $existing;
         }
 
-        $percentage = (float) config('rexmlm.referral_subscription_commission', 10);
+        $percentage = (float) config('rexmlm.referral_subscription_commission', 20);
         $amount = round(((float) $plan->price) * ($percentage / 100), 2);
 
         if ($amount <= 0) {

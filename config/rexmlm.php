@@ -20,7 +20,7 @@ return [
         'partner' => 'partner',
     ],
 
-    'referral_subscription_commission' => (float) env('REXMLM_REFERRAL_SUBSCRIPTION_COMMISSION', 10),
+    'referral_subscription_commission' => (float) env('REXMLM_REFERRAL_SUBSCRIPTION_COMMISSION', 20),
 
     'withdrawal_minimum' => (float) env('REXMLM_WITHDRAWAL_MINIMUM', 20),
 

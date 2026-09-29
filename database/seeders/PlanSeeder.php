@@ -86,7 +86,7 @@ class PlanSeeder extends Seeder
                     'interval' => $plan['interval'],
                     'paddle_price_id' => $plan['paddle_price_id'],
                     'paddle_intro_discount_id' => $plan['paddle_intro_discount_id'],
-                    'commission_percentage' => 10,
+                    'commission_percentage' => 20,
                     'features' => PlanEntitlements::catalog($plan['slug']),
                     'is_active' => true,
                     'sort_order' => $plan['sort_order'],
