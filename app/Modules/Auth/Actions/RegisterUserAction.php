@@ -7,27 +7,32 @@ namespace App\Modules\Auth\Actions;
 use App\Models\User;
 use App\Modules\Landing\Models\LandingPage;
 use App\Modules\MLM\Actions\AcceptInvitationAction;
+use App\Modules\MLM\Actions\JoinLeaderNetworkAction;
 use App\Modules\MLM\Models\Network;
+use App\Modules\Organization\Actions\SyncUserOrganization;
 use App\Modules\Store\Models\Store;
 use App\Shared\Enums\NetworkStatus;
 use App\Shared\Enums\UserStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class RegisterUserAction
 {
     public function __construct(
         private readonly AcceptInvitationAction $acceptInvitation,
-        private readonly \App\Modules\Organization\Actions\SyncUserOrganization $syncOrganization,
+        private readonly JoinLeaderNetworkAction $joinLeaderNetwork,
+        private readonly SyncUserOrganization $syncOrganization,
     ) {}
 
     /**
-     * @param  array{name: string, email: string, password: string, invitation_token?: string|null, country?: string|null, catalog_company_id?: int|null, catalog_company_name?: string|null, catalog_rank_id?: int|null, catalog_rank_name?: string|null, google_id?: string|null, email_verified_at?: mixed}  $data
+     * @param  array{name: string, email: string, password: string, invitation_token?: string|null, sponsor_id?: int|null, country?: string|null, catalog_company_id?: int|null, catalog_company_name?: string|null, catalog_rank_id?: int|null, catalog_rank_name?: string|null, google_id?: string|null, email_verified_at?: mixed}  $data
      */
     public function handle(array $data): User
     {
         return DB::transaction(function () use ($data) {
             $invitationToken = $data['invitation_token'] ?? null;
+            $sponsorId = isset($data['sponsor_id']) ? (int) $data['sponsor_id'] : 0;
 
             $user = User::create([
                 'name' => $data['name'],
@@ -36,16 +41,25 @@ class RegisterUserAction
                 'status' => UserStatus::Active,
                 'google_id' => $data['google_id'] ?? null,
                 'email_verified_at' => $data['email_verified_at'] ?? null,
-                'country' => filled($invitationToken) ? null : strtoupper((string) ($data['country'] ?? '')),
-                'catalog_company_id' => filled($invitationToken) ? null : ($data['catalog_company_id'] ?? null),
-                'catalog_company_name' => filled($invitationToken) ? null : ($data['catalog_company_name'] ?? null),
-                'catalog_rank_id' => filled($invitationToken) ? null : ($data['catalog_rank_id'] ?? null),
-                'catalog_rank_name' => filled($invitationToken) ? null : ($data['catalog_rank_name'] ?? null),
+                'country' => filled($invitationToken) || $sponsorId > 0 ? null : strtoupper((string) ($data['country'] ?? '')),
+                'catalog_company_id' => filled($invitationToken) || $sponsorId > 0 ? null : ($data['catalog_company_id'] ?? null),
+                'catalog_company_name' => filled($invitationToken) || $sponsorId > 0 ? null : ($data['catalog_company_name'] ?? null),
+                'catalog_rank_id' => filled($invitationToken) || $sponsorId > 0 ? null : ($data['catalog_rank_id'] ?? null),
+                'catalog_rank_name' => filled($invitationToken) || $sponsorId > 0 ? null : ($data['catalog_rank_name'] ?? null),
             ]);
 
             if (filled($invitationToken)) {
                 $this->acceptInvitation->handle($user, (string) $invitationToken);
                 $user->assignRole(config('rexmlm.roles.partner'));
+            } elseif ($sponsorId > 0) {
+                $leader = User::query()->find($sponsorId);
+                if ($leader === null) {
+                    throw ValidationException::withMessages([
+                        'sponsor_id' => ['El enlace de referido no es válido.'],
+                    ]);
+                }
+                $user->assignRole(config('rexmlm.roles.partner'));
+                $this->joinLeaderNetwork->handle($user, $leader);
             } else {
                 $user->assignRole(config('rexmlm.roles.leader'));
                 $this->provisionNetwork($user);

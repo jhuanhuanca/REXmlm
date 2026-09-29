@@ -31,7 +31,7 @@ class SubscriptionPastDueMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.subscription-past-due',
+            html: 'emails.subscription-past-due',
         );
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::get('registration-options', RegistrationOptionsController::class)->middleware('throttle:60,1');
+    Route::get('sponsors/{id}', \App\Modules\Auth\Http\Controllers\SponsorPreviewController::class)->middleware('throttle:60,1');
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:auth');
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:auth');
     Route::post('google', [AuthController::class, 'google'])->middleware('throttle:auth');

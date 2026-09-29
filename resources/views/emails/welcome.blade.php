@@ -1,14 +1,14 @@
-@component('mail::message')
-# Hola, {{ $user->name }}
-
-Tu cuenta en {{ config('app.name') }} se creó correctamente. Ya puedes entrar a tu panel.
-
-@component('mail::button', ['url' => $loginUrl])
-Entrar a la plataforma
-@endcomponent
-
-Si no creaste esta cuenta, ignora este correo.
-
-Gracias,<br>
-{{ config('app.name') }}
-@endcomponent
+<x-email.shell
+    eyebrow="Bienvenida"
+    title="Hola, {{ $user->name }}"
+    :action-url="$loginUrl"
+    action-label="Entrar a la plataforma"
+    note="Si no creaste esta cuenta, ignora este correo."
+>
+    <p style="margin:0 0 12px;">
+        Tu cuenta en <strong>{{ config('app.name') }}</strong> ya está lista. Entra al panel para ver tu red, tienda y herramientas.
+    </p>
+    <p style="margin:0;">
+        Guarda este correo: desde aquí vuelves a tu espacio de trabajo cuando lo necesites.
+    </p>
+</x-email.shell>

@@ -20,7 +20,8 @@ class GoogleAuthRequest extends FormRequest
 
         return [
             'id_token' => ['required', 'string'],
-            'invitation_token' => ['nullable', 'string', 'size:64'],
+            'invitation_token' => ['nullable', 'string', 'size:64', 'prohibits:sponsor_id'],
+            'sponsor_id' => ['nullable', 'integer', 'exists:users,id', 'prohibits:invitation_token'],
             'country' => ['nullable', 'string', 'size:2', Rule::in($countryCodes)],
             'catalog_company_name' => ['nullable', 'string', 'max:255'],
             'catalog_rank_name' => ['nullable', 'string', 'max:255'],
@@ -29,7 +30,7 @@ class GoogleAuthRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->filled('invitation_token')) {
+        if ($this->filled('invitation_token') || $this->filled('sponsor_id')) {
             return;
         }
 

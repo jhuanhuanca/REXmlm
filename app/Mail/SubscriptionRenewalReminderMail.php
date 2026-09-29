@@ -33,7 +33,7 @@ class SubscriptionRenewalReminderMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.subscription-renewal',
+            html: 'emails.subscription-renewal',
         );
     }
 }

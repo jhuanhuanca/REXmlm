@@ -84,6 +84,40 @@ class AuthEmailAndGoogleTest extends TestCase
         $this->assertSame(1, Invitation::query()->where('email', 'socio-mail@auth.test')->count());
     }
 
+    public function test_open_sponsor_link_registers_a_partner(): void
+    {
+        $leader = $this->leader('leader-ref@auth.test');
+
+        $this->getJson('/api/v1/auth/sponsors/'.$leader->id)
+            ->assertOk()
+            ->assertJsonPath('name', $leader->name);
+
+        $this->postJson('/api/v1/auth/register', [
+            'name' => 'Socio abierto',
+            'email' => 'socio-ref@auth.test',
+            'password' => 'password12',
+            'password_confirmation' => 'password12',
+            'sponsor_id' => $leader->id,
+        ])->assertCreated();
+
+        $partner = User::query()->where('email', 'socio-ref@auth.test')->first();
+        $this->assertTrue($partner?->hasRole('partner'));
+        $this->assertSame($leader->id, $partner?->sponsor_user_id);
+        $this->assertSame($leader->current_network_id, $partner?->current_network_id);
+        $this->assertDatabaseHas('referrals', [
+            'referrer_id' => $leader->id,
+            'referred_id' => $partner->id,
+        ]);
+    }
+
+    public function test_sponsor_preview_hides_non_leaders(): void
+    {
+        $partner = User::factory()->create(['email' => 'not-leader@auth.test']);
+        $partner->assignRole('partner');
+
+        $this->getJson('/api/v1/auth/sponsors/'.$partner->id)->assertNotFound();
+    }
+
     public function test_google_creates_leader_and_sends_welcome_email(): void
     {
         $this->fakeGoogleToken('google-sub-1', 'google-leader@auth.test', 'Google Líder');

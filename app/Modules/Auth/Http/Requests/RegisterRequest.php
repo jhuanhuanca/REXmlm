@@ -17,7 +17,7 @@ class RegisterRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->filled('invitation_token')) {
+        if ($this->filled('invitation_token') || $this->filled('sponsor_id')) {
             return;
         }
 
@@ -32,13 +32,14 @@ class RegisterRequest extends FormRequest
     public function rules(): array
     {
         $countryCodes = array_column(config('rexmlm.countries'), 'code');
-        $leaderOnly = ['required_without:invitation_token'];
+        $leaderOnly = ['required_without_all:invitation_token,sponsor_id'];
 
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'confirmed', Password::min(8)],
-            'invitation_token' => ['nullable', 'string', 'size:64'],
+            'invitation_token' => ['nullable', 'string', 'size:64', 'prohibits:sponsor_id'],
+            'sponsor_id' => ['nullable', 'integer', 'exists:users,id', 'prohibits:invitation_token'],
             'country' => [...$leaderOnly, 'nullable', 'string', 'size:2', Rule::in($countryCodes)],
             'catalog_company_name' => [...$leaderOnly, 'nullable', 'string', 'max:255'],
             'catalog_rank_name' => [...$leaderOnly, 'nullable', 'string', 'max:255'],

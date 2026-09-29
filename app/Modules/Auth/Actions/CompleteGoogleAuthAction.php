@@ -41,9 +41,12 @@ class CompleteGoogleAuthAction
         }
 
         $invitationToken = $input['invitation_token'] ?? null;
+        $sponsorId = isset($input['sponsor_id']) ? (int) $input['sponsor_id'] : 0;
 
         if (filled($invitationToken)) {
             $this->assertInvitationEmail((string) $invitationToken, $identity['email']);
+        } elseif ($sponsorId > 0) {
+            $this->assertOpenSponsor($sponsorId);
         } else {
             $input = $this->assertLeaderAffiliation($input);
         }
@@ -53,6 +56,7 @@ class CompleteGoogleAuthAction
             'email' => $identity['email'],
             'password' => Str::password(32),
             'invitation_token' => $invitationToken,
+            'sponsor_id' => $sponsorId > 0 ? $sponsorId : null,
             'country' => $input['country'] ?? null,
             'catalog_company_id' => $input['catalog_company_id'] ?? null,
             'catalog_company_name' => $input['catalog_company_name'] ?? null,
@@ -92,6 +96,17 @@ class CompleteGoogleAuthAction
         if (strcasecmp($invitation->email, $email) !== 0) {
             throw ValidationException::withMessages([
                 'email' => ['La cuenta de Google no coincide con el correo de la invitación.'],
+            ]);
+        }
+    }
+
+    private function assertOpenSponsor(int $sponsorId): void
+    {
+        $leader = User::query()->find($sponsorId);
+
+        if ($leader === null || ! $leader->hasRole(config('rexmlm.roles.leader')) || ! $leader->current_network_id) {
+            throw ValidationException::withMessages([
+                'sponsor_id' => ['El enlace de referido no es válido.'],
             ]);
         }
     }

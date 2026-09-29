@@ -5,24 +5,21 @@ declare(strict_types=1);
 namespace App\Modules\MLM\Actions;
 
 use App\Models\User;
+use App\Modules\MLM\Actions\JoinLeaderNetworkAction;
 use App\Modules\MLM\Models\Invitation;
-use App\Modules\MLM\Models\Referral;
-use App\Modules\Organization\Actions\SyncUserOrganization;
-use App\Modules\Organization\Models\OrganizationMember;
 use App\Shared\Enums\InvitationStatus;
-use App\Shared\Enums\ReferralStatus;
 use Illuminate\Validation\ValidationException;
 
 class AcceptInvitationAction
 {
     public function __construct(
-        private readonly SyncUserOrganization $syncOrganization,
+        private readonly JoinLeaderNetworkAction $joinLeaderNetwork,
     ) {}
 
     public function handle(User $user, string $plainToken): Invitation
     {
         /** @var Invitation|null $invitation */
-        $invitation = Invitation::query()->byPlainToken($plainToken)->first();
+        $invitation = Invitation::query()->with('leader')->byPlainToken($plainToken)->first();
 
         if ($invitation === null || ! $invitation->isUsable()) {
             throw ValidationException::withMessages([
@@ -42,40 +39,25 @@ class AcceptInvitationAction
             'accepted_user_id' => $user->id,
         ])->save();
 
-        Referral::create([
-            'referrer_id' => $invitation->leader_id,
-            'referred_id' => $user->id,
-            'network_id' => $invitation->network_id,
-            'level' => 1,
-            'status' => ReferralStatus::Active,
-        ]);
+        $leader = $invitation->leader ?? User::query()->find($invitation->leader_id);
 
-        $leader = $invitation->relationLoaded('leader')
-            ? $invitation->leader
-            : User::query()->with('organization')->find($invitation->leader_id);
-        $leader?->loadMissing('organization');
+        if ($leader === null) {
+            throw ValidationException::withMessages([
+                'invitation_token' => ['La invitación no es válida o ya expiró.'],
+            ]);
+        }
 
-        $companyId = $invitation->catalog_company_id ?: $leader?->workingCatalogCompanyId() ?: $leader?->catalog_company_id;
-        $companyName = $invitation->catalog_company_name ?: $leader?->catalog_company_name;
+        if ($invitation->catalog_company_id || $invitation->catalog_company_name) {
+            $user->forceFill([
+                'catalog_company_id' => $user->catalog_company_id ?: $invitation->catalog_company_id,
+                'catalog_company_name' => $user->catalog_company_name ?: $invitation->catalog_company_name,
+            ])->save();
+        }
 
-        $user->forceFill([
-            'sponsor_user_id' => $invitation->leader_id,
-            'current_network_id' => $invitation->network_id,
-            'country' => $user->country ?: $leader?->country,
-            'catalog_company_id' => $user->catalog_company_id ?: $companyId,
-            'catalog_company_name' => $user->catalog_company_name ?: $companyName,
-        ])->save();
+        $this->joinLeaderNetwork->handle($user, $leader);
 
-        if ($companyId) {
-            $organization = $this->syncOrganization->findOrCreate((int) $companyId, $companyName ? (string) $companyName : null);
-            $this->syncOrganization->attach($user, $organization);
-            OrganizationMember::query()
-                ->where('organization_id', $organization->id)
-                ->where('email', mb_strtolower($user->email))
-                ->whereNull('user_id')
-                ->update(['user_id' => $user->id]);
-        } else {
-            $this->syncOrganization->handle($user);
+        if ($invitation->network_id && (int) $user->current_network_id !== (int) $invitation->network_id) {
+            $user->forceFill(['current_network_id' => $invitation->network_id])->save();
         }
 
         return $invitation;

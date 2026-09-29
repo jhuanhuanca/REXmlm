@@ -29,7 +29,7 @@ class CommissionAccruedMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.commission-accrued',
+            html: 'emails.commission-accrued',
         );
     }
 }
