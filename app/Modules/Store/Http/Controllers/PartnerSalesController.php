@@ -11,6 +11,8 @@ use App\Modules\Store\Http\Requests\PlacePartnerPosOrderRequest;
 use App\Modules\Store\Http\Resources\OrderResource;
 use App\Modules\Store\Http\Resources\PartnerProductResource;
 use App\Modules\Store\Http\Resources\StoreResource;
+use App\Modules\Store\Models\InventoryAllocation;
+use App\Modules\Store\Models\Product;
 use App\Modules\Store\Services\StoreSellerGrantService;
 use App\Shared\Enums\OrderStatus;
 use Illuminate\Http\JsonResponse;
@@ -30,18 +32,12 @@ class PartnerSalesController extends Controller
 
         if ($store === null) {
             return response()->json([
-                'message' => 'Tu líder aún no te autorizó a vender de su inventario.',
+                'message' => 'Tu líder aún no te asignó inventario ni te autorizó a vender.',
             ], 403);
         }
 
         $store->load('user');
-        $products = $store->products()
-            ->where('source', ProductSource::Personal)
-            ->where('is_active', true)
-            ->with('category')
-            ->latest()
-            ->get()
-            ->each(fn ($product) => $product->setRelation('store', $store));
+        $products = $this->catalogFor($store, $request->user());
 
         return response()->json([
             'data' => [
@@ -58,7 +54,7 @@ class PartnerSalesController extends Controller
 
         if ($store === null) {
             return response()->json([
-                'message' => 'Tu líder aún no te autorizó a vender de su inventario.',
+                'message' => 'Tu líder aún no te asignó inventario ni te autorizó a vender.',
             ], 403);
         }
 
@@ -89,7 +85,7 @@ class PartnerSalesController extends Controller
 
         if ($store === null) {
             return response()->json([
-                'message' => 'Tu líder aún no te autorizó a vender de su inventario.',
+                'message' => 'Tu líder aún no te asignó inventario ni te autorizó a vender.',
             ], 403);
         }
 
@@ -114,5 +110,66 @@ class PartnerSalesController extends Controller
         return (new OrderResource($order))
             ->response()
             ->setStatusCode(201);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Product>
+     */
+    private function catalogFor($store, $partner)
+    {
+        $canWarehouse = $this->grants->allows($partner, $store);
+        $lots = InventoryAllocation::query()
+            ->where('store_id', $store->id)
+            ->where('partner_user_id', $partner->id)
+            ->with(['product.category'])
+            ->get()
+            ->keyBy('product_id');
+
+        $catalog = collect();
+
+        foreach ($lots as $lot) {
+            $product = $lot->product;
+            if ($product === null || $product->source !== ProductSource::Personal || ! $product->is_active) {
+                continue;
+            }
+
+            $hand = $lot->remaining();
+            $warehouse = $canWarehouse && $product->tracksInventory() ? (int) $product->stock : 0;
+            $sellable = $product->isDropship() ? max($hand, 1) : $hand + $warehouse;
+
+            if ($sellable <= 0) {
+                continue;
+            }
+
+            $product->setRelation('store', $store);
+            $product->setAttribute('partner_stock', $sellable);
+            $product->setAttribute('assigned_remaining', $hand);
+            $product->setAttribute('from_assignment', $hand > 0);
+            $catalog->put($product->id, $product);
+        }
+
+        if ($canWarehouse) {
+            $store->products()
+                ->where('source', ProductSource::Personal)
+                ->where('is_active', true)
+                ->with('category')
+                ->latest()
+                ->get()
+                ->each(function (Product $product) use ($store, $catalog) {
+                    if ($catalog->has($product->id)) {
+                        return;
+                    }
+                    if (! $product->isDropship() && (int) $product->stock <= 0) {
+                        return;
+                    }
+                    $product->setRelation('store', $store);
+                    $product->setAttribute('partner_stock', $product->isDropship() ? max(1, (int) $product->stock) : (int) $product->stock);
+                    $product->setAttribute('assigned_remaining', 0);
+                    $product->setAttribute('from_assignment', false);
+                    $catalog->put($product->id, $product);
+                });
+        }
+
+        return $catalog->values();
     }
 }

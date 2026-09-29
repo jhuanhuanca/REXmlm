@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Store\Services;
 
 use App\Models\User;
+use App\Modules\Store\Models\InventoryAllocation;
 use App\Modules\Store\Models\Store;
 use App\Modules\Store\Models\StoreSellerGrant;
 use App\Modules\Subscription\Services\PlanEntitlements;
@@ -57,9 +58,22 @@ class StoreSellerGrantService
             ->where('partner_user_id', $partner->id)
             ->first();
 
-        $store = $grant?->store;
+        if ($grant?->store instanceof Store) {
+            return $grant->store;
+        }
 
-        return $store instanceof Store ? $store : null;
+        $allocation = InventoryAllocation::query()
+            ->with(['store.user'])
+            ->where('partner_user_id', $partner->id)
+            ->latest('id')
+            ->first();
+
+        return $allocation?->store instanceof Store ? $allocation->store : null;
+    }
+
+    public function partnerCanSell(User $partner): bool
+    {
+        return $this->storeFor($partner) !== null;
     }
 
     public function allows(User $partner, Store $store): bool

@@ -6,7 +6,7 @@ namespace App\Modules\Auth\Http\Resources;
 
 use App\Services\Catalog\CatalogCompanyNames;
 use App\Services\Catalog\CompanyBranding;
-use App\Modules\Store\Models\StoreSellerGrant;
+use App\Modules\Store\Services\StoreSellerGrantService;
 use App\Modules\Subscription\Services\PlanEntitlements;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -87,9 +87,7 @@ class AuthUserResource extends JsonResource
                         : null,
                 ],
             ),
-            'can_sell_leader_inventory' => StoreSellerGrant::query()
-                ->where('partner_user_id', $this->id)
-                ->exists(),
+            'can_sell_leader_inventory' => app(StoreSellerGrantService::class)->partnerCanSell($this->resource),
         ];
     }
 

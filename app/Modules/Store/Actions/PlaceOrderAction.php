@@ -12,6 +12,7 @@ use App\Modules\Store\Models\Product;
 use App\Modules\Store\Models\Store;
 use App\Modules\Store\Services\InventoryAlertService;
 use App\Modules\Store\Services\ShippingQuoteService;
+use App\Modules\Store\Services\StoreSellerGrantService;
 use App\Modules\Store\Services\StoreTeamMembership;
 use App\Shared\Enums\OrderStatus;
 use App\Shared\Support\Currencies;
@@ -24,6 +25,7 @@ class PlaceOrderAction
         private readonly ShippingQuoteService $shipping,
         private readonly InventoryAlertService $alerts,
         private readonly StoreTeamMembership $team,
+        private readonly StoreSellerGrantService $grants,
     ) {}
 
     /**
@@ -89,7 +91,7 @@ class PlaceOrderAction
                 $lot = null;
                 $fromLot = 0;
 
-                if ($partnerId !== null && $consumesStock && $channel !== 'pos') {
+                if ($partnerId !== null && $consumesStock) {
                     $lot = InventoryAllocation::query()
                         ->where('store_id', $store->id)
                         ->where('product_id', $product->id)
@@ -105,6 +107,12 @@ class PlaceOrderAction
                 if (! $onShelf) {
                     throw ValidationException::withMessages([
                         'items' => ['Un producto no pertenece a esta tienda o no está a la venta.'],
+                    ]);
+                }
+
+                if ($channel === 'pos' && $partnerId !== null && $fromWarehouse > 0 && ! $this->partnerMayUseWarehouse($store, $partnerId)) {
+                    throw ValidationException::withMessages([
+                        'items' => ['Solo puedes vender las unidades que tu líder te asignó de '.$product->name.'.'],
                     ]);
                 }
 
@@ -247,5 +255,10 @@ class PlaceOrderAction
         }
 
         return $this->team->partnerIdOnTeam($store, $data['partner_user_id'] ?? null, $actor);
+    }
+
+    private function partnerMayUseWarehouse(Store $store, int $partnerId): bool
+    {
+        return $this->grants->allows(User::query()->findOrFail($partnerId), $store);
     }
 }

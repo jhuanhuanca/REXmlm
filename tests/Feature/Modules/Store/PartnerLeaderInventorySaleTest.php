@@ -134,7 +134,7 @@ class PartnerLeaderInventorySaleTest extends TestCase
         ])->assertForbidden();
     }
 
-    public function test_partner_pos_consumes_warehouse_not_assigned_lot(): void
+    public function test_partner_pos_consumes_assigned_lot_not_warehouse(): void
     {
         [$ana, $socio, $product] = $this->teamWithStock();
         Sanctum::actingAs($ana);
@@ -144,19 +144,47 @@ class PartnerLeaderInventorySaleTest extends TestCase
             'quantity' => 4,
         ])->assertCreated();
 
-        $referralId = $this->referralId($ana, $socio);
-        $this->putJson('/api/v1/dashboard/team/'.$referralId, ['can_sell_inventory' => true])->assertOk();
-
         Sanctum::actingAs($socio->fresh());
+        $this->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.can_sell_leader_inventory', true);
+
+        $this->getJson('/api/v1/partner-sales')
+            ->assertOk()
+            ->assertJsonPath('data.products.0.assigned_remaining', 4)
+            ->assertJsonPath('data.products.0.stock', 4);
+
         $this->postJson('/api/v1/partner-sales/orders', [
             'customer_name' => 'Cliente POS',
             'items' => [['product_id' => $product->id, 'quantity' => 2]],
             'delivery' => 'pickup',
+            'mark_paid' => true,
         ])->assertCreated();
 
-        $this->assertSame(4, $product->fresh()->stock);
-        $this->assertSame(0, (int) \App\Modules\Store\Models\InventoryAllocation::query()->value('qty_sold'));
+        $this->assertSame(6, $product->fresh()->stock);
+        $this->assertSame(2, (int) \App\Modules\Store\Models\InventoryAllocation::query()->value('qty_sold'));
         $this->assertSame(4, (int) \App\Modules\Store\Models\InventoryAllocation::query()->value('qty_assigned'));
+    }
+
+    public function test_assigned_partner_cannot_sell_more_than_lot_without_grant(): void
+    {
+        [$ana, $socio, $product] = $this->teamWithStock();
+        Sanctum::actingAs($ana);
+        $this->postJson('/api/v1/my-store/inventory/allocations', [
+            'product_id' => $product->id,
+            'partner_user_id' => $socio->id,
+            'quantity' => 2,
+        ])->assertCreated();
+
+        Sanctum::actingAs($socio->fresh());
+        $this->postJson('/api/v1/partner-sales/orders', [
+            'customer_name' => 'Cliente POS',
+            'items' => [['product_id' => $product->id, 'quantity' => 3]],
+            'delivery' => 'pickup',
+        ])->assertUnprocessable();
+
+        $this->assertSame(8, $product->fresh()->stock);
+        $this->assertSame(0, (int) \App\Modules\Store\Models\InventoryAllocation::query()->value('qty_sold'));
     }
 
     public function test_leader_pos_sale_is_still_personal(): void
