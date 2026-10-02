@@ -505,6 +505,83 @@ class LeaderInventoryTest extends TestCase
         $this->assertSame('Solo Ana', $product->fresh()->name);
     }
 
+    public function test_personal_inventory_image_is_stored_in_the_catalog_database(): void
+    {
+        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+            if ($request->method() === 'POST' && str_contains($request->url(), 'inventory-images')) {
+                return Http::response([
+                    'data' => [
+                        'uuid' => '11111111-2222-4333-8444-555555555555',
+                        'kind' => 'personal',
+                        'mime' => 'image/jpeg',
+                        'size' => 120,
+                        'original_name' => 'te.jpg',
+                    ],
+                ], 201);
+            }
+
+            if ($request->method() === 'GET' && str_contains($request->url(), 'inventory-images/11111111-2222-4333-8444-555555555555')) {
+                return Http::response('JPEGDATA', 200, [
+                    'Content-Type' => 'image/jpeg',
+                    'Content-Disposition' => 'inline; filename="te.jpg"',
+                ]);
+            }
+
+            return Http::response(['data' => []], 200);
+        });
+
+        $ana = $this->leader('ana-img@inv.test', 7);
+        Sanctum::actingAs($ana);
+
+        $this->post('/api/v1/products/image', [
+            'kind' => 'personal',
+            'file' => UploadedFile::fake()->image('te.jpg', 20, 20),
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.uuid', '11111111-2222-4333-8444-555555555555')
+            ->assertJsonPath('data.url', config('app.url').'/api/v1/inventory-images/11111111-2222-4333-8444-555555555555');
+
+        $this->get('/api/v1/inventory-images/11111111-2222-4333-8444-555555555555')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg')
+            ->assertSee('JPEGDATA', false);
+
+        $this->postJson('/api/v1/products', [
+            'name' => 'Té con foto',
+            'price' => 12,
+            'stock' => 2,
+            'source' => 'personal',
+            'image' => config('app.url').'/api/v1/inventory-images/11111111-2222-4333-8444-555555555555',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.image', config('app.url').'/api/v1/inventory-images/11111111-2222-4333-8444-555555555555');
+    }
+
+    public function test_incentive_inventory_image_upload_goes_to_catalog(): void
+    {
+        Http::fake([
+            'catalog.test/api/v1/inventory-images' => Http::response([
+                'data' => [
+                    'uuid' => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+                    'kind' => 'incentive',
+                    'mime' => 'image/png',
+                    'size' => 80,
+                    'original_name' => 'regalo.png',
+                ],
+            ], 201),
+        ]);
+
+        $ana = $this->leader('ana-gift-img@inv.test', 7);
+        Sanctum::actingAs($ana);
+
+        $this->post('/api/v1/products/image', [
+            'kind' => 'incentive',
+            'file' => UploadedFile::fake()->image('regalo.png', 16, 16),
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.kind', 'incentive');
+    }
+
     private function leader(string $email, ?int $companyId = null): User
     {
         $user = User::factory()->create([

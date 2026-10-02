@@ -18,21 +18,18 @@ class StoreReportService
     {
         $store = $this->storeOf($user);
         $products = $store->products()
-            ->with(['category', 'incentiveProduct', 'allocations.partner:id,name,email'])
-            ->orderBy('source')
+            ->with(['category', 'incentiveProduct'])
+            ->where('source', ProductSource::Personal)
             ->orderBy('name')
             ->get();
         $products->each(fn (Product $product) => $product->setRelation('store', $store));
+        $personalIds = $products->pluck('id')->all();
 
         $productRows = $products->map(function (Product $product) {
-            $source = $product->source?->value ?? 'personal';
-
             return [
                 $product->id,
-                $this->sourceLabel($source),
                 $product->name,
                 $product->category?->name ?? '',
-                $product->slug,
                 round((float) $product->price, 2),
                 round((float) $product->purchase_cost, 2),
                 round((float) $product->incentiveUnitCost(), 2),
@@ -42,7 +39,6 @@ class StoreReportService
                 $product->incentiveProduct?->name ?? '',
                 $product->incentiveProduct ? max(1, (int) $product->incentive_qty) : '',
                 (int) $product->stock,
-                (int) $product->allocations->sum(fn ($row) => $row->remaining()),
                 $product->fulfillment?->value ?? 'stock',
                 $product->is_active ? 'Sí' : 'No',
                 $product->is_published ? 'Sí' : 'No',
@@ -54,32 +50,16 @@ class StoreReportService
             ];
         })->all();
 
-        $allocationRows = [];
-        foreach ($products as $product) {
-            foreach ($product->allocations as $row) {
-                $allocationRows[] = [
-                    $product->name,
-                    $row->partner?->name ?? '',
-                    $row->partner?->email ?? '',
-                    (int) $row->qty_assigned,
-                    (int) $row->qty_sold,
-                    $row->remaining(),
-                    $row->notes ?? '',
-                    optional($row->created_at)?->toDateTimeString() ?? '',
-                ];
-            }
-        }
+        [$orderRows, $itemRows, $paid, $pending, $orderCount] = $this->salesTables($store, $personalIds);
 
         $export = new WorkbookExport(
-            'Inventario · '.$store->name,
-            'Todos los productos de la tienda (personal, incentivos y empresa)',
+            'Inventario personal · '.$store->name,
+            sprintf('Stock propio y ventas de ese inventario · pagadas %s · pendientes %s', number_format($paid, 2, '.', ''), number_format($pending, 2, '.', '')),
         );
-        $export->addSheet('Productos', [
+        $export->addSheet('Inventario personal', [
             'ID',
-            'Origen',
             'Nombre',
             'Categoría',
-            'Slug',
             'Precio',
             'Costo compra',
             'Costo incentivo',
@@ -88,8 +68,7 @@ class StoreReportService
             'Margen %',
             'Incentivo',
             'Cant. incentivo',
-            'Stock bodega',
-            'En equipo',
+            'Stock',
             'Entrega',
             'Activo',
             'Publicado',
@@ -99,16 +78,43 @@ class StoreReportService
             'SKU proveedor',
             'URL proveedor',
         ], $productRows);
-        $export->addSheet('Asignaciones', [
+        $export->addSheet('Ventas', [
+            'ID',
+            'Estado',
+            'Canal',
+            'Entrega',
+            'Pago',
+            'Cliente',
+            'Correo cliente',
+            'Teléfono',
+            'Socio',
+            'Correo socio',
+            'Envío',
+            'País',
+            'Departamento',
+            'Zona',
+            'Dirección',
+            'Total',
+            'Moneda',
+            'Pagado',
+            'Creado',
+        ], $orderRows);
+        $export->addSheet('Lineas de venta', [
+            'Pedido',
+            'Estado',
+            'Cliente',
+            'Socio',
             'Producto',
-            'Miembro',
-            'Correo',
-            'Asignado',
-            'Vendido',
-            'Pendiente',
-            'Notas',
+            'Cantidad',
+            'Precio unit.',
+            'Costo unit.',
+            'Costo incentivo',
+            'Total línea',
+            'Costo línea',
+            'Utilidad línea',
+            'Moneda',
             'Fecha',
-        ], $allocationRows);
+        ], $itemRows);
 
         return $export->download('inventario_'.$store->slug.'_'.now()->format('Y-m-d'), $format);
     }
@@ -116,70 +122,11 @@ class StoreReportService
     public function sales(User $user, string $format): Response
     {
         $store = $this->storeOf($user);
-        $orders = $store->orders()
-            ->with(['items', 'partner:id,name,email'])
-            ->latest()
-            ->get();
-
-        $orderRows = [];
-        $itemRows = [];
-        $paid = 0.0;
-        $pending = 0.0;
-
-        foreach ($orders as $order) {
-            $status = $this->orderStatus($order);
-            $total = round((float) $order->total, 2);
-            if ($status === 'Pagada') {
-                $paid += $total;
-            } elseif ($status === 'Pendiente') {
-                $pending += $total;
-            }
-
-            $orderRows[] = [
-                $order->id,
-                $status,
-                $order->channel === 'pos' ? 'Venta directa' : 'Tienda pública',
-                $order->delivery === 'pickup' ? 'Retiro' : 'Envío',
-                $this->paymentLabel($order->payment_method),
-                $order->customer_name,
-                $order->customer_email,
-                $order->customer_phone ?? '',
-                $order->partner?->name ?? 'Personal',
-                $order->partner?->email ?? '',
-                round((float) $order->shipping_fee, 2),
-                $order->shipping_country ?? '',
-                $order->shipping_department ?? '',
-                $order->shipping_area ?? '',
-                $order->shipping_address ?? '',
-                $total,
-                $order->currency,
-                optional($order->paid_at)?->toDateTimeString() ?? '',
-                optional($order->created_at)?->toDateTimeString() ?? '',
-            ];
-
-            foreach ($order->items as $item) {
-                $itemRows[] = [
-                    $order->id,
-                    $status,
-                    $order->customer_name,
-                    $order->partner?->name ?? 'Personal',
-                    $item->name,
-                    (int) $item->quantity,
-                    round((float) $item->unit_price, 2),
-                    round((float) $item->unit_cost, 2),
-                    round((float) $item->incentive_cost, 2),
-                    round((float) $item->line_total, 2),
-                    round((float) $item->line_cost, 2),
-                    round((float) $item->line_profit, 2),
-                    $order->currency,
-                    optional($order->created_at)?->toDateString() ?? '',
-                ];
-            }
-        }
+        [$orderRows, $itemRows, $paid, $pending, $orderCount] = $this->salesTables($store);
 
         $export = new WorkbookExport(
             'Ventas · '.$store->name,
-            sprintf('Pagadas %s · pendientes %s · %d órdenes', number_format($paid, 2, '.', ''), number_format($pending, 2, '.', ''), $orders->count()),
+            sprintf('Pagadas %s · pendientes %s · %d órdenes', number_format($paid, 2, '.', ''), number_format($pending, 2, '.', ''), $orderCount),
         );
         $export->addSheet('Pedidos', [
             'ID',
@@ -222,21 +169,93 @@ class StoreReportService
         return $export->download('ventas_'.$store->slug.'_'.now()->format('Y-m-d'), $format);
     }
 
+    /**
+     * @param  list<int>|null  $productIds
+     * @return array{0: list<list<scalar|null>>, 1: list<list<scalar|null>>, 2: float, 3: float, 4: int}
+     */
+    private function salesTables(Store $store, ?array $productIds = null): array
+    {
+        $orders = $store->orders()
+            ->with(['items', 'partner:id,name,email'])
+            ->latest()
+            ->get();
+
+        $orderRows = [];
+        $itemRows = [];
+        $paid = 0.0;
+        $pending = 0.0;
+        $allowed = $productIds === null ? null : array_flip($productIds);
+
+        foreach ($orders as $order) {
+            $items = $order->items;
+            if ($allowed !== null) {
+                $items = $items->filter(fn ($item) => isset($allowed[(int) $item->product_id]));
+                if ($items->isEmpty()) {
+                    continue;
+                }
+            }
+
+            $status = $this->orderStatus($order);
+            $total = $allowed === null
+                ? round((float) $order->total, 2)
+                : round((float) $items->sum(fn ($item) => (float) $item->line_total), 2);
+            if ($status === 'Pagada') {
+                $paid += $total;
+            } elseif ($status === 'Pendiente') {
+                $pending += $total;
+            }
+
+            $orderRows[] = [
+                $order->id,
+                $status,
+                $order->channel === 'pos' ? 'Venta directa' : 'Tienda pública',
+                $order->delivery === 'pickup' ? 'Retiro' : 'Envío',
+                $this->paymentLabel($order->payment_method),
+                $order->customer_name,
+                $order->customer_email,
+                $order->customer_phone ?? '',
+                $order->partner?->name ?? 'Personal',
+                $order->partner?->email ?? '',
+                round((float) $order->shipping_fee, 2),
+                $order->shipping_country ?? '',
+                $order->shipping_department ?? '',
+                $order->shipping_area ?? '',
+                $order->shipping_address ?? '',
+                $total,
+                $order->currency,
+                optional($order->paid_at)?->toDateTimeString() ?? '',
+                optional($order->created_at)?->toDateTimeString() ?? '',
+            ];
+
+            foreach ($items as $item) {
+                $itemRows[] = [
+                    $order->id,
+                    $status,
+                    $order->customer_name,
+                    $order->partner?->name ?? 'Personal',
+                    $item->name,
+                    (int) $item->quantity,
+                    round((float) $item->unit_price, 2),
+                    round((float) $item->unit_cost, 2),
+                    round((float) $item->incentive_cost, 2),
+                    round((float) $item->line_total, 2),
+                    round((float) $item->line_cost, 2),
+                    round((float) $item->line_profit, 2),
+                    $order->currency,
+                    optional($order->created_at)?->toDateString() ?? '',
+                ];
+            }
+        }
+
+        return [$orderRows, $itemRows, $paid, $pending, count($orderRows)];
+    }
+
     private function storeOf(User $user): Store
     {
         $store = $user->store;
         abort_if($store === null, 404, 'No tienes tienda');
 
         return $store;
-    }
-
-    private function sourceLabel(string $source): string
-    {
-        return match ($source) {
-            ProductSource::Company->value => 'Empresa',
-            ProductSource::Incentive->value => 'Incentivo',
-            default => 'Personal',
-        };
     }
 
     private function orderStatus(Order $order): string

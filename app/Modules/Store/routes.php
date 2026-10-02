@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('store/{slug}', [StoreController::class, 'show'])->middleware('throttle:public');
 Route::get('store/{slug}/shipping-quote', [StoreController::class, 'shippingQuote'])->middleware('throttle:public');
 Route::get('store/{slug}/products/{productSlug}', [ProductController::class, 'showPublic'])->middleware('throttle:public');
+Route::get('inventory-images/{uuid}', [ProductController::class, 'showImage'])
+    ->middleware('throttle:public')
+    ->where('uuid', '[0-9a-fA-F-]{36}');
 Route::post('store/{slug}/orders', [OrderController::class, 'store'])->middleware('throttle:checkout');
 
 Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
@@ -55,6 +58,7 @@ Route::middleware(['auth:sanctum', 'two_factor'])->group(function () {
 
     Route::middleware(['permission:product.manage', 'subscription', 'plan.feature:store'])->group(function () {
         Route::post('products', [ProductController::class, 'store']);
+        Route::post('products/image', [ProductController::class, 'storeImage'])->middleware('throttle:uploads');
         Route::post('products/import', [ProductController::class, 'import'])->middleware('throttle:uploads');
         Route::put('products/{id}', [ProductController::class, 'update']);
         Route::delete('products/{id}', [ProductController::class, 'destroy']);

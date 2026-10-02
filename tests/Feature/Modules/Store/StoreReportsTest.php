@@ -40,6 +40,17 @@ class StoreReportsTest extends TestCase
             'is_active' => true,
             'is_published' => true,
         ]);
+        Product::query()->create([
+            'store_id' => $ana->store->id,
+            'source' => ProductSource::Company,
+            'name' => 'Producto empresa oculto',
+            'slug' => 'producto-empresa-oculto',
+            'price' => 20,
+            'stock' => 5,
+            'currency' => 'USD',
+            'is_active' => true,
+            'is_published' => false,
+        ]);
 
         Sanctum::actingAs($ana);
 
@@ -47,6 +58,19 @@ class StoreReportsTest extends TestCase
         $excel->assertOk();
         $this->assertStringStartsWith('PK', $excel->getContent());
         $this->assertStringContainsString('spreadsheetml', (string) $excel->headers->get('content-type'));
+
+        $path = tempnam(sys_get_temp_dir(), 'invxlsx');
+        $this->assertNotFalse($path);
+        file_put_contents($path, $excel->getContent());
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path) === true);
+        $workbook = (string) $zip->getFromName('xl/workbook.xml');
+        $zip->close();
+        @unlink($path);
+
+        $this->assertStringContainsString('Inventario personal', $workbook);
+        $this->assertStringContainsString('Ventas', $workbook);
+        $this->assertStringNotContainsString('Asignaciones', $workbook);
 
         $pdf = $this->get('/api/v1/my-store/reports/inventory?format=pdf');
         $pdf->assertOk();

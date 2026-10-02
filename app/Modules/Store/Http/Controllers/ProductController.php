@@ -9,20 +9,24 @@ use App\Modules\Store\Actions\ImportPersonalProductsAction;
 use App\Modules\Store\Enums\ProductFulfillment;
 use App\Modules\Store\Enums\ProductSource;
 use App\Modules\Store\Http\Requests\ImportProductsRequest;
+use App\Modules\Store\Http\Requests\StoreInventoryImageRequest;
 use App\Modules\Store\Http\Requests\StoreProductRequest;
 use App\Modules\Store\Http\Resources\ProductResource;
 use App\Modules\Store\Http\Resources\PublicProductResource;
 use App\Modules\Store\Models\Product;
 use App\Modules\Store\Models\Store;
 use App\Modules\Store\Services\InventoryAlertService;
+use App\Services\Catalog\CatalogClient;
 use App\Services\Catalog\CompanyCatalogSync;
 use App\Shared\Auth\Owned;
 use App\Shared\Support\Currencies;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class ProductController extends Controller
 {
@@ -209,6 +213,58 @@ class ProductController extends Controller
         $product->setRelation('store', $store);
 
         return new PublicProductResource($product);
+    }
+
+    public function storeImage(StoreInventoryImageRequest $request, CatalogClient $catalog): JsonResponse
+    {
+        $store = $request->user()->store;
+        $file = $request->file('file');
+
+        if ($store === null || ! $file instanceof UploadedFile) {
+            return response()->json(['message' => 'Adjunta una imagen.'], 422);
+        }
+
+        $kind = $request->string('kind')->toString() ?: ProductSource::Personal->value;
+
+        try {
+            $saved = $catalog->storeInventoryImage($file, [
+                'kind' => $kind,
+                'company_id' => $request->user()->workingCatalogCompanyId(),
+                'owner_key' => 'store:'.$store->id,
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 502);
+        }
+
+        $url = rtrim((string) config('app.url'), '/').'/api/v1/inventory-images/'.$saved['uuid'];
+
+        return response()->json([
+            'data' => [
+                'uuid' => $saved['uuid'],
+                'url' => $url,
+                'kind' => $saved['kind'],
+                'mime' => $saved['mime'],
+                'size' => $saved['size'],
+                'original_name' => $saved['original_name'],
+            ],
+        ], 201);
+    }
+
+    public function showImage(string $uuid, CatalogClient $catalog): Response
+    {
+        try {
+            $file = $catalog->fetchInventoryImage($uuid);
+        } catch (RuntimeException) {
+            abort(404);
+        }
+
+        return response($file['body'], 200, [
+            'Content-Type' => $file['mime'],
+            'Content-Disposition' => 'inline; filename="'.addslashes($file['name']).'"',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
     }
 
     private function ownedProduct(Request $request, int $id): Product

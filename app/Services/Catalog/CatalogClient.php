@@ -391,6 +391,96 @@ class CatalogClient
         return $response->json();
     }
 
+    /**
+     * @param  array{kind?: string, company_id?: int|null, owner_key?: string|null}  $meta
+     * @return array{uuid: string, kind: string, mime: string, size: int, original_name: string}
+     */
+    public function storeInventoryImage(\Illuminate\Http\UploadedFile $file, array $meta = []): array
+    {
+        $base = rtrim((string) config('services.catalog.url'), '/');
+        $token = (string) config('services.catalog.token');
+
+        if ($base === '' || $token === '') {
+            throw new RuntimeException('Catalog microservice is not configured.');
+        }
+
+        $bytes = file_get_contents($file->getRealPath() ?: $file->getPathname());
+        if ($bytes === false || $bytes === '') {
+            throw new RuntimeException('No se pudo leer la imagen.');
+        }
+
+        $fields = array_filter([
+            'kind' => $meta['kind'] ?? 'personal',
+            'company_id' => $meta['company_id'] ?? null,
+            'owner_key' => $meta['owner_key'] ?? null,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== 0);
+
+        try {
+            $response = Http::acceptJson()
+                ->timeout(max(20, (int) config('services.catalog.timeout', 8)))
+                ->withHeaders(['X-Service-Token' => $token])
+                ->attach('file', $bytes, $file->getClientOriginalName() ?: 'imagen.jpg')
+                ->post($base.'/inventory-images', $fields)
+                ->throw();
+        } catch (RequestException $exception) {
+            throw new RuntimeException(
+                'No se pudo guardar la imagen en el catálogo de productos.',
+                previous: $exception,
+            );
+        }
+
+        $payload = $response->json();
+        $row = is_array($payload['data'] ?? null) ? $payload['data'] : $payload;
+        $uuid = is_array($row) ? trim((string) ($row['uuid'] ?? '')) : '';
+
+        if ($uuid === '') {
+            throw new RuntimeException('El catálogo no devolvió el identificador de la imagen.');
+        }
+
+        return [
+            'uuid' => $uuid,
+            'kind' => (string) ($row['kind'] ?? $fields['kind'] ?? 'personal'),
+            'mime' => (string) ($row['mime'] ?? 'image/jpeg'),
+            'size' => (int) ($row['size'] ?? strlen($bytes)),
+            'original_name' => (string) ($row['original_name'] ?? $file->getClientOriginalName()),
+        ];
+    }
+
+    /**
+     * @return array{body: string, mime: string, name: string}
+     */
+    public function fetchInventoryImage(string $uuid): array
+    {
+        $base = rtrim((string) config('services.catalog.url'), '/');
+        $token = (string) config('services.catalog.token');
+
+        if ($base === '' || $token === '') {
+            throw new RuntimeException('Catalog microservice is not configured.');
+        }
+
+        try {
+            $response = Http::timeout(max(15, (int) config('services.catalog.timeout', 8)))
+                ->withHeaders(['X-Service-Token' => $token])
+                ->get($base.'/inventory-images/'.$uuid)
+                ->throw();
+        } catch (RequestException $exception) {
+            throw new RuntimeException('No se encontró la imagen en el catálogo.', previous: $exception);
+        }
+
+        $mime = (string) ($response->header('Content-Type') ?: 'application/octet-stream');
+        $disposition = (string) $response->header('Content-Disposition');
+        $name = 'imagen';
+        if (preg_match('/filename="([^"]+)"/', $disposition, $match) === 1) {
+            $name = $match[1];
+        }
+
+        return [
+            'body' => $response->body(),
+            'mime' => $mime,
+            'name' => $name,
+        ];
+    }
+
     private function remember(string $key, callable $callback): mixed
     {
         $ttl = (int) config('services.catalog.cache_ttl', 300);
